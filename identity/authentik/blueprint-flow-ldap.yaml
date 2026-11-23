@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+# Password-only bind flow for Jellyfin LDAP. The default authentication flow
+# validates TOTP once a user has a device; TVs cannot prompt for that.
+
+version: 1
+metadata:
+  name: homelab-ldap-authentication-flow
+  labels:
+    blueprints.goauthentik.io/description: LDAP bind without MFA (Jellyfin TVs)
+
+entries:
+  - model: authentik_stages_password.passwordstage
+    id: ldap-authentication-password
+    state: present
+    identifiers:
+      name: homelab-ldap-authentication-password
+    attrs:
+      name: homelab-ldap-authentication-password
+      backends:
+        - authentik.core.auth.InbuiltBackend
+        - authentik.core.auth.TokenBackend
+
+  - model: authentik_stages_identification.identificationstage
+    id: ldap-authentication-identification
+    state: present
+    identifiers:
+      name: homelab-ldap-authentication-identification
+    attrs:
+      name: homelab-ldap-authentication-identification
+      user_fields:
+        - username
+        - email
+      password_stage: !KeyOf ldap-authentication-password
+      case_insensitive_matching: true
+
+  - model: authentik_stages_user_login.userloginstage
+    id: ldap-authentication-login
+    state: present
+    identifiers:
+      name: homelab-ldap-authentication-login
+    attrs:
+      name: homelab-ldap-authentication-login
+
+  - model: authentik_flows.flow
+    id: ldap-authentication-flow
+    state: present
+    identifiers:
+      slug: homelab-ldap-authentication-flow
+    attrs:
+      name: Homelab LDAP authentication
+      slug: homelab-ldap-authentication-flow
+      title: LDAP sign in
+      designation: authentication
+      authentication: require_outpost
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf ldap-authentication-flow
+      stage: !KeyOf ldap-authentication-identification
+      order: 10
+    attrs:
+      target: !KeyOf ldap-authentication-flow
+      stage: !KeyOf ldap-authentication-identification
+      order: 10
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf ldap-authentication-flow
+      stage: !KeyOf ldap-authentication-login
+      order: 30
+    attrs:
+      target: !KeyOf ldap-authentication-flow
+      stage: !KeyOf ldap-authentication-login
+      order: 30

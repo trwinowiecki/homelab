@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Poll GitHub Deployments for environment=homelab and trigger homelab-deploy --now.
+set -euo pipefail
+
+REPO="${GITHUB_REPOSITORY:?set GITHUB_REPOSITORY=owner/name}"
+TOKEN_FILE="${GITHUB_TOKEN_FILE:-/etc/homelab/github-token}"
+STATE_DIR="${STATE_DIR:-/var/lib/homelab-deploy}"
+API="https://api.github.com/repos/${REPO}"
+
+[[ -f $TOKEN_FILE ]] || { echo "missing $TOKEN_FILE"; exit 0; }
+TOKEN=$(tr -d '\n' <"$TOKEN_FILE")
+[[ -n $TOKEN ]] || exit 0
+
+auth=(-H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+
+mapfile -t IDS < <(curl -fsS "${auth[@]}" \
+  "$API/deployments?environment=homelab&per_page=5" \
+  | jq -r '.[].id')
+
+for id in "${IDS[@]:-}"; do
+  [[ -n $id ]] || continue
+  marker="$STATE_DIR/deployment.$id"
+  [[ -f $marker ]] && continue
+  # Check latest status
+  state=$(curl -fsS "${auth[@]}" "$API/deployments/$id/statuses" | jq -r '.[0].state // "none"')
+  if [[ $state != none && $state != queued && $state != pending ]]; then
+    echo "$state" >"$marker"
+    continue
+  fi
+  payload=$(curl -fsS "${auth[@]}" "$API/deployments/$id")
+  targets=$(jq -r '.payload.targets // [] | join(" ")' <<<"$payload")
+  curl -fsS -X POST "${auth[@]}" \
+    -H 'Content-Type: application/json' \
+    -d '{"state":"in_progress","description":"homelab-deploy-poller"}' \
+    "$API/deployments/$id/statuses" >/dev/null
+
+  set +e
+  # shellcheck disable=SC2086
+  /usr/local/sbin/homelab-deploy --now $targets
+  rc=$?
+  set -e
+  if [[ $rc -eq 0 ]]; then
+    curl -fsS -X POST "${auth[@]}" \
+      -H 'Content-Type: application/json' \
+      -d '{"state":"success","description":"deployed"}' \
+      "$API/deployments/$id/statuses" >/dev/null
+    echo success >"$marker"
+  else
+    curl -fsS -X POST "${auth[@]}" \
+      -H 'Content-Type: application/json' \
+      -d '{"state":"failure","description":"homelab-deploy failed"}' \
+      "$API/deployments/$id/statuses" >/dev/null
+    echo failure >"$marker"
+  fi
+done

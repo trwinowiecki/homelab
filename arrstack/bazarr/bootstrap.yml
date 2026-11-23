@@ -1,0 +1,21 @@
+# Declarative Bazarr bootstrap — applied by scripts/apply_arrstack_bootstrap.py
+
+sonarr:
+  url: http://sonarr:8989
+radarr:
+  url: http://radarr:7878
+
+languages:
+  - code: en
+    name: English
+
+providers:
+  - name: opensubtitlescom
+    enabled: true
+
+settings:
+  series_subtitles: en
+  movie_subtitles: en
+  minimum_score: 90
+  hearing_impaired: false
+  forced: false

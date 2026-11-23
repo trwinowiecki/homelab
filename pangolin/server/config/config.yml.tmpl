@@ -1,0 +1,36 @@
+# Pangolin application config. Rendered to config/config.yml by ../deploy.sh.
+#
+# server.secret is intentionally absent: it is supplied as the SERVER_SECRET
+# environment variable so the secret never lands in a file on disk.
+#
+# Full reference: https://docs.pangolin.net/self-host/advanced/config-file
+
+gerbil:
+    start_port: 51820
+    base_endpoint: "${PANGOLIN_DASHBOARD_DOMAIN}"
+
+app:
+    dashboard_url: "https://${PANGOLIN_DASHBOARD_DOMAIN}"
+    log_level: "info"
+    telemetry:
+        anonymous_usage: false
+
+domains:
+    domain1:
+        base_domain: "${PANGOLIN_BASE_DOMAIN}"
+        cert_resolver: "letsencrypt"
+
+server:
+    cors:
+        origins: ["https://${PANGOLIN_DASHBOARD_DOMAIN}"]
+        methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+        allowed_headers: ["X-CSRF-Token", "Content-Type"]
+        credentials: false
+
+flags:
+    # No SMTP configured, so verification would lock out new accounts.
+    require_email_verification: false
+    # This is a private deployment: accounts are created by invite only.
+    disable_signup_without_invite: true
+    disable_user_create_org: true
+    allow_raw_resources: true

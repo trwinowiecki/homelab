@@ -1,0 +1,19 @@
+---
+- name: Ensure AdGuard Home binary exists on CT 102
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ctid=102
+    pct status "$ctid" >/dev/null
+    pct exec "$ctid" -- bash -lc '
+      set -euo pipefail
+      if [[ -x /opt/AdGuardHome/AdGuardHome ]]; then
+        /opt/AdGuardHome/AdGuardHome --version || true
+        exit 0
+      fi
+      echo "AdGuard Home missing under /opt/AdGuardHome — install from GitHub release,"
+      echo "then finish the wizard once. Filters/DNS rewrites: ./deploy.sh adguard"
+      exit 1
+    '
+  args:
+    executable: /bin/bash
+  ignore_errors: true

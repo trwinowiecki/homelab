@@ -1,0 +1,41 @@
+---
+# Substrate playbook. App deploys stay in ./deploy.sh (see docs/rebuild-automation.md).
+- name: Proxmox host mounts and packages
+  hosts: pve
+  roles:
+    - role: pve_mounts
+      tags: [pve, mounts]
+    - role: lxc_guests
+      tags: [pve, lxc]
+    - role: restic_repo
+      tags: [pve, backup]
+
+- name: Docker inside LXC guests
+  hosts: pve
+  roles:
+    - role: lxc_docker
+      tags: [lxc, docker]
+
+- name: AdGuard binary install (filters still via ./deploy.sh adguard)
+  hosts: pve
+  roles:
+    - role: adguard_install
+      tags: [adguard]
+
+- name: TrueNAS shares and snapshots
+  hosts: truenas
+  roles:
+    - role: truenas_shares
+      tags: [truenas]
+
+- name: Pangolin VPS baseline
+  hosts: pangolin_vps
+  roles:
+    - role: pangolin_vps
+      tags: [pangolin]
+
+- name: Deploy agent (CT 105)
+  hosts: pve
+  roles:
+    - role: deployer
+      tags: [deployer]

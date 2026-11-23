@@ -1,0 +1,8 @@
+.env
+.rendered/
+caddy/Caddyfile
+authentik/blueprint-proxy.yaml
+authentik/blueprint-oidc.yaml
+authentik/blueprint-ldap.yaml
+authentik/blueprint-pangolin.yaml
+authentik/blueprint-events-discord.yaml

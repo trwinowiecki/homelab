@@ -1,0 +1,20 @@
+# Declarative Bindery bootstrap — applied by scripts/apply_arrstack_bootstrap.py
+
+prowlarr:
+  name: Prowlarr
+  url: http://prowlarr:9696
+  sync: true
+
+root_folders:
+  - path: /books
+    name: Audiobooks
+
+download_clients:
+  - name: qBittorrent
+    type: qbittorrent
+    host: gluetun
+    port: 8200
+    use_ssl: false
+    url_base: /
+    category: audio
+    path_remap: auto

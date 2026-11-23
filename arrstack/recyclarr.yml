@@ -1,0 +1,128 @@
+# yaml-language-server: $schema=https://schemas.recyclarr.dev/latest/config-schema.json
+# Recyclarr v8: official include templates removed — use guide-backed quality_profiles.
+---
+sonarr:
+  series:
+    base_url: http://sonarr:8989
+    api_key: !env_var SONARR_API_KEY
+    delete_old_custom_formats: true
+    quality_definition:
+      type: series
+    quality_profiles:
+      - trash_id: 72dae194fc92bf828f32cde7744e51a1  # WEB-1080p
+        reset_unmatched_scores:
+          enabled: true
+      - trash_id: d1498e7d189fbe6c7110ceaabb7473e6  # WEB-2160p
+        reset_unmatched_scores:
+          enabled: true
+      - trash_id: e58cf4e090184db3b3d7c79c1a9e9b4a  # Base Profile → Any
+        name: Any
+        reset_unmatched_scores:
+          enabled: true
+      # Manual assignment in Sonarr/Seerr. Does not downgrade existing files.
+      - name: Low (720p)
+        reset_unmatched_scores:
+          enabled: true
+        upgrade:
+          allowed: true
+          until_quality: Bluray-720p
+          until_score: 10000
+        min_format_score: 0
+        quality_sort: top
+        qualities:
+          - name: Bluray-720p
+          - name: WEB 720p
+            qualities:
+              - WEBDL-720p
+              - WEBRip-720p
+          - name: HDTV-720p
+          - name: Bluray-480p
+          - name: WEB 480p
+            qualities:
+              - WEBDL-480p
+              - WEBRip-480p
+          - name: DVD
+          - name: SDTV
+    # Profile 5 (Dolby Vision with no HDR10 base) direct-plays as audio-only on
+    # phones. WEB-2160p min format score is 0, so -10000 is not grabbed.
+    custom_formats:
+      - trash_ids:
+          - 9b27ab6498ec0f31a3353992e19434ca  # DV (w/o HDR fallback)
+        assign_scores_to:
+          - trash_id: d1498e7d189fbe6c7110ceaabb7473e6  # WEB-2160p
+            score: -10000
+      - trash_ids:
+          - 85c61753df5da1fb2aab6f2a47426b09  # BR-DISK
+          - 9c11cd3f07101cdba90a2d81cf0e56b4  # LQ
+          - e2315f990da2e2cbfc9fa5b7a6fcfe48  # LQ (Release Title)
+        assign_scores_to:
+          - name: Low (720p)
+      - trash_ids:
+          - 47435ece6b99a0b477caf360e79ba0bb  # x265 (HD)
+        assign_scores_to:
+          - name: Low (720p)
+            score: 100
+    media_management:
+      propers_and_repacks: do_not_prefer
+
+radarr:
+  movies:
+    base_url: http://radarr:7878
+    api_key: !env_var RADARR_API_KEY
+    delete_old_custom_formats: true
+    quality_definition:
+      type: movie
+    quality_profiles:
+      - trash_id: d1d67249d3890e49bc12e275d989a7e9  # HD Bluray + WEB
+        reset_unmatched_scores:
+          enabled: true
+      - trash_id: 64fb5f9858489bdac2af690e27c8f42f  # UHD Bluray + WEB
+        reset_unmatched_scores:
+          enabled: true
+      - trash_id: 92e9a65a52ae48478fb8e9f34238d823  # Base Profile → Any
+        name: Any
+        reset_unmatched_scores:
+          enabled: true
+      - name: Low (720p)
+        reset_unmatched_scores:
+          enabled: true
+        upgrade:
+          allowed: true
+          until_quality: Bluray-720p
+          until_score: 10000
+        min_format_score: 0
+        quality_sort: top
+        qualities:
+          - name: Bluray-720p
+          - name: WEB 720p
+            qualities:
+              - WEBDL-720p
+              - WEBRip-720p
+          - name: HDTV-720p
+          - name: Bluray-480p
+          - name: WEB 480p
+            qualities:
+              - WEBDL-480p
+              - WEBRip-480p
+          - name: DVD
+          - name: SDTV
+    # Same Profile 5 rejection as Sonarr. UHD Bluray + WEB min format score is 0.
+    custom_formats:
+      - trash_ids:
+          - 923b6abef9b17f937fab56cfcf89e1f1  # DV (w/o HDR fallback)
+        assign_scores_to:
+          - trash_id: 64fb5f9858489bdac2af690e27c8f42f  # UHD Bluray + WEB
+            score: -10000
+      - trash_ids:
+          - ed38b889b31be83fda192888e2286d83  # BR-DISK
+          - 90a6f9a284dff5103f6346090e6280c8  # LQ
+          - e204b80c87be9497a8a6eaff48f72905  # LQ (Release Title)
+        assign_scores_to:
+          - name: Low (720p)
+      - trash_ids:
+          - dc98083864ea246d05a42df0d05f81cc  # x265 (HD)
+        assign_scores_to:
+          - name: Low (720p)
+            score: 100
+    media_management:
+      propers_and_repacks: do_not_prefer

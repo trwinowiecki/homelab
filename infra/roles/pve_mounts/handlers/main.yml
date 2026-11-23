@@ -1,0 +1,4 @@
+---
+- name: reload mounts
+  ansible.builtin.command: systemctl daemon-reload
+  listen: reload mounts

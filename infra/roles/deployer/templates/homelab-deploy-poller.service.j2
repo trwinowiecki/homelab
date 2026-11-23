@@ -1,0 +1,10 @@
+[Unit]
+Description=Poll GitHub Deployments for deploy-now
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=GITHUB_REPOSITORY={{ deployer_github_repository | default('') }}
+Environment=GITHUB_TOKEN_FILE=/etc/homelab/github-token
+Environment=REPO_DIR={{ deployer_repo_dir }}
+ExecStart=/usr/local/sbin/homelab-deploy-poller

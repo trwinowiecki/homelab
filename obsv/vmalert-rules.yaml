@@ -1,0 +1,49 @@
+groups:
+  - name: obsv
+    type: vlogs
+    interval: 1m
+    rules:
+      - alert: ContainerUnhealthy
+        expr: '_time:5m {stream="health"} | stats by (container) count() as n | filter n:>0'
+        labels:
+          source: vmalert
+        annotations:
+          description: '{{$labels.container}} is unhealthy. Probe output is in VictoriaLogs stream=health. Gluetun: wait for internal VPN restart; if inbound torrent peers stay dead, restart qbittorrent only (not docker restart of gluetun). Dozzle: http://<arrstack-host>:8880'
+
+      - alert: ContainerExited
+        expr: '_time:5m {stream="event"} Action:in(die,oom,dead) | stats by (container, Action, exitCode) count() as n | filter n:>0'
+        labels:
+          source: vmalert
+        annotations:
+          description: '{{$labels.container}} {{$labels.Action}} exitCode={{$labels.exitCode}}. If this is gluetun, qbittorrent is stranded on a dead netns. From /mnt/config: docker compose up -d qbittorrent  (docker restart will not fix this).'
+
+      - alert: GluetunVpnRestart
+        expr: '_time:5m {container="gluetun"} "restarting VPN because it failed to pass the healthcheck" | stats count() as n | filter n:>0'
+        labels:
+          source: vmalert
+          container: gluetun
+        annotations:
+          description: 'Gluetun internally restarted the VPN. Dependents should still have a namespace. qBittorrent inbound listen may be dead (qdm12/gluetun#1407). If peers drop: docker compose restart qbittorrent from /mnt/config. Do not recreate gluetun unless it exited.'
+
+      - alert: GluetunDependentsStranded
+        expr: '_time:5m {stream="event", container="gluetun"} Action:in(destroy,die,create) | stats by (Action) count() as n | filter n:>0'
+        labels:
+          source: vmalert
+          container: gluetun
+        annotations:
+          description: 'gluetun container lifecycle {{$labels.Action}}. qbittorrent uses network_mode service:gluetun. Recreate (not restart) the dependent: from /mnt/config run  docker compose up -d qbittorrent'
+
+      - alert: RestartStorm
+        expr: '_time:10m {stream="event"} Action:restart | stats by (container) count() as n | filter n:>=3'
+        labels:
+          source: vmalert
+        annotations:
+          description: '{{$labels.container}} restarted {{$value}} times in 10m. Do not loop restarts. Inspect VictoriaLogs for that container and docker events. If it is gluetun, treat qbittorrent as stranded until compose up -d qbittorrent.'
+
+      - alert: CollectorSilent
+        expr: '_time:2m {stream="heartbeat"} | stats count() as heartbeats | filter heartbeats:<1'
+        labels:
+          source: vmalert
+          container: vector
+        annotations:
+          description: 'Vector heartbeat missing for 2m (Vector is down or not shipping while VictoriaLogs is up). monocker should also page if the vector container stopped. Check docker logs vector. Do not restart arrstack to fix this.'

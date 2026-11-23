@@ -1,0 +1,185 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+# Invitation-only enrollment. No public sign-up. Admin creates a link and
+# sets invitation Custom attributes to choose groups (never admin/vpn).
+
+version: 1
+metadata:
+  name: homelab-enrollment-flow
+  labels:
+    blueprints.goauthentik.io/description: Invitation enrollment for household and friends
+
+entries:
+  - model: authentik_stages_invitation.invitationstage
+    id: enrollment-invitation
+    state: present
+    identifiers:
+      name: homelab-enrollment-invitation
+    attrs:
+      name: homelab-enrollment-invitation
+      continue_flow_without_invitation: false
+
+  - model: authentik_stages_prompt.prompt
+    id: enroll-field-username
+    state: present
+    identifiers:
+      name: homelab-enroll-field-username
+    attrs:
+      name: homelab-enroll-field-username
+      field_key: username
+      label: Username
+      type: username
+      required: true
+      placeholder: Username
+      order: 0
+      placeholder_expression: false
+
+  - model: authentik_stages_prompt.prompt
+    id: enroll-field-name
+    state: present
+    identifiers:
+      name: homelab-enroll-field-name
+    attrs:
+      name: homelab-enroll-field-name
+      field_key: name
+      label: Display name
+      type: text
+      required: true
+      placeholder: Display name
+      order: 1
+      placeholder_expression: false
+
+  - model: authentik_stages_prompt.prompt
+    id: enroll-field-email
+    state: present
+    identifiers:
+      name: homelab-enroll-field-email
+    attrs:
+      name: homelab-enroll-field-email
+      field_key: email
+      label: Email
+      type: email
+      required: true
+      placeholder: Email
+      order: 2
+      placeholder_expression: false
+
+  - model: authentik_stages_prompt.prompt
+    id: enroll-field-password
+    state: present
+    identifiers:
+      name: homelab-enroll-field-password
+    attrs:
+      name: homelab-enroll-field-password
+      field_key: password
+      label: Password
+      type: password
+      required: true
+      placeholder: Password
+      order: 3
+      placeholder_expression: false
+
+  - model: authentik_stages_prompt.prompt
+    id: enroll-field-password-repeat
+    state: present
+    identifiers:
+      name: homelab-enroll-field-password-repeat
+    attrs:
+      name: homelab-enroll-field-password-repeat
+      field_key: password_repeat
+      label: Password (repeat)
+      type: password
+      required: true
+      placeholder: Password (repeat)
+      order: 4
+      placeholder_expression: false
+
+  - model: authentik_stages_prompt.promptstage
+    id: enrollment-prompt
+    state: present
+    identifiers:
+      name: homelab-enrollment-prompt
+    attrs:
+      name: homelab-enrollment-prompt
+      fields:
+        - !KeyOf enroll-field-username
+        - !KeyOf enroll-field-name
+        - !KeyOf enroll-field-email
+        - !KeyOf enroll-field-password
+        - !KeyOf enroll-field-password-repeat
+
+  - model: authentik_stages_user_write.userwritestage
+    id: enrollment-user-write
+    state: present
+    identifiers:
+      name: homelab-enrollment-user-write
+    attrs:
+      name: homelab-enrollment-user-write
+      user_creation_mode: always_create
+      create_users_as_inactive: false
+
+  - model: authentik_stages_user_login.userloginstage
+    id: enrollment-user-login
+    state: present
+    identifiers:
+      name: homelab-enrollment-user-login
+    attrs:
+      name: homelab-enrollment-user-login
+      session_duration: days=30
+
+  - model: authentik_flows.flow
+    id: enrollment-flow
+    state: present
+    identifiers:
+      slug: homelab-enrollment-flow
+    attrs:
+      name: Homelab enrollment
+      slug: homelab-enrollment-flow
+      title: Create your account
+      designation: enrollment
+      authentication: require_unauthenticated
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf enrollment-flow
+      stage: !KeyOf enrollment-invitation
+      order: 10
+    attrs:
+      target: !KeyOf enrollment-flow
+      stage: !KeyOf enrollment-invitation
+      order: 10
+      evaluate_on_plan: true
+      re_evaluate_policies: true
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf enrollment-flow
+      stage: !KeyOf enrollment-prompt
+      order: 20
+    attrs:
+      target: !KeyOf enrollment-flow
+      stage: !KeyOf enrollment-prompt
+      order: 20
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf enrollment-flow
+      stage: !KeyOf enrollment-user-write
+      order: 30
+    attrs:
+      target: !KeyOf enrollment-flow
+      stage: !KeyOf enrollment-user-write
+      order: 30
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf enrollment-flow
+      stage: !KeyOf enrollment-user-login
+      order: 100
+    attrs:
+      target: !KeyOf enrollment-flow
+      stage: !KeyOf enrollment-user-login
+      order: 100

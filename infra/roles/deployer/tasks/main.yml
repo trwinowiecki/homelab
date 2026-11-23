@@ -1,0 +1,113 @@
+---
+# Creates/configures CT 105 deploy agent on Proxmox.
+# Requires: pct on pve, age deployer key present on the control machine,
+# deployer_repo_url set after the public GitHub repo exists.
+
+- name: Ensure deployer CT exists
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if pct status {{ deployer_ctid }} >/dev/null 2>&1; then
+      echo exists
+      exit 0
+    fi
+    echo "CT {{ deployer_ctid }} missing — create with:"
+    echo "  pct create {{ deployer_ctid }} local:vztmpl/debian-13-standard_*.tar.zst \\"
+    echo "    --hostname {{ deployer_hostname }} --cores {{ deployer_cores }} \\"
+    echo "    --memory {{ deployer_memory_mb }} --rootfs local-lvm:{{ deployer_disk_gb }} \\"
+    echo "    --net0 name=eth0,bridge=vmbr0,ip=dhcp --unprivileged 1 --features nesting=1,keyctl=1 \\"
+    echo "    --onboot 1 --timezone {{ deployer_timezone }}"
+    exit 1
+  args:
+    executable: /bin/bash
+  register: deployer_ct
+  changed_when: false
+
+- name: Install agent packages inside CT
+  ansible.builtin.shell: |
+    pct exec {{ deployer_ctid }} -- bash -lc '
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -qq
+      apt-get install -y -qq git openssh-client curl jq python3 age
+      # sops from GitHub release if missing
+      if ! command -v sops >/dev/null; then
+        curl -fsSL -o /usr/local/bin/sops \
+          https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64
+        chmod 755 /usr/local/bin/sops
+      fi
+      timedatectl set-timezone {{ deployer_timezone }} || true
+      mkdir -p /etc/homelab /var/lib/homelab-deploy {{ deployer_repo_dir }}
+    '
+  args:
+    executable: /bin/bash
+
+- name: Push age key into CT (0600)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    pct push {{ deployer_ctid }} {{ deployer_age_key_src }} /etc/homelab/age.key
+    pct exec {{ deployer_ctid }} -- chmod 600 /etc/homelab/age.key
+  args:
+    executable: /bin/bash
+  when: deployer_age_key_src is exists
+
+- name: Push allowed_signers and agent scripts
+  ansible.builtin.shell: |
+    set -euo pipefail
+    pct push {{ deployer_ctid }} {{ role_path }}/files/allowed_signers /etc/homelab/allowed_signers
+    pct push {{ deployer_ctid }} {{ role_path }}/files/homelab-deploy /usr/local/sbin/homelab-deploy
+    pct push {{ deployer_ctid }} {{ role_path }}/files/homelab-deploy-poller /usr/local/sbin/homelab-deploy-poller
+    pct exec {{ deployer_ctid }} -- chmod 644 /etc/homelab/allowed_signers
+    pct exec {{ deployer_ctid }} -- chmod 755 /usr/local/sbin/homelab-deploy /usr/local/sbin/homelab-deploy-poller
+  args:
+    executable: /bin/bash
+
+- name: Render and install systemd units
+  ansible.builtin.shell: |
+    set -euo pipefail
+    tmp=$(mktemp -d)
+    cat >"$tmp/homelab-deploy.service" <<'UNIT'
+    {{ lookup('template', 'homelab-deploy.service.j2') }}
+    UNIT
+    cat >"$tmp/homelab-deploy.timer" <<'UNIT'
+    {{ lookup('template', 'homelab-deploy.timer.j2') }}
+    UNIT
+    cat >"$tmp/homelab-deploy-poller.service" <<'UNIT'
+    {{ lookup('template', 'homelab-deploy-poller.service.j2') }}
+    UNIT
+    cat >"$tmp/homelab-deploy-poller.timer" <<'UNIT'
+    {{ lookup('template', 'homelab-deploy-poller.timer.j2') }}
+    UNIT
+    for f in homelab-deploy.service homelab-deploy.timer homelab-deploy-poller.service homelab-deploy-poller.timer; do
+      pct push {{ deployer_ctid }} "$tmp/$f" /etc/systemd/system/$f
+    done
+    pct exec {{ deployer_ctid }} -- systemctl daemon-reload
+    pct exec {{ deployer_ctid }} -- systemctl enable --now homelab-deploy.timer homelab-deploy-poller.timer
+    rm -rf "$tmp"
+  args:
+    executable: /bin/bash
+
+- name: Clone or update repo inside CT
+  ansible.builtin.shell: |
+    set -euo pipefail
+    {% if deployer_repo_url | length > 0 %}
+    pct exec {{ deployer_ctid }} -- bash -lc '
+      set -euo pipefail
+      if [[ ! -d {{ deployer_repo_dir }}/.git ]]; then
+        git clone --branch {{ deployer_branch }} {{ deployer_repo_url }} {{ deployer_repo_dir }}
+      else
+        cd {{ deployer_repo_dir }} && git remote set-url origin {{ deployer_repo_url }} && git fetch origin
+      fi
+    '
+    {% else %}
+    echo "deployer_repo_url unset — skip clone (set after GitHub publish)"
+    {% endif %}
+  args:
+    executable: /bin/bash
+
+- name: Reminder — restrict pve authorized_keys
+  ansible.builtin.debug:
+    msg: >-
+      Add the deployer SSH key to pve authorized_keys with from=<CT105-IP>.
+      Place a fine-grained GitHub token (deployments scope) at
+      /etc/homelab/github-token inside the CT. Fill allowed_signers with your
+      signing key + GitHub web-flow.

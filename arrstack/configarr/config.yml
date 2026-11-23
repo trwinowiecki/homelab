@@ -1,0 +1,178 @@
+# Connective tissue only — TRaSH profiles/custom formats live in recyclarr.yml.
+# Reach *arr apps on the mediastack Docker network. qBit shares gluetun's netns
+# (no qbittorrent DNS name); UI ports bind 127.0.0.1 so 172.28.10.1 is unreachable.
+
+sonarr:
+  main:
+    base_url: http://sonarr:8989
+    api_key: !env SONARR_API_KEY
+    root_folders:
+      - /data/media/tv
+    download_clients:
+      data:
+        - name: SABnzbd
+          type: sabnzbd
+          enable: true
+          priority: 1
+          remove_completed_downloads: true
+          remove_failed_downloads: true
+          fields:
+            host: sabnzbd
+            port: 8080
+            use_ssl: false
+            url_base: ""
+            api_key: !env SABNZBD_API_KEY
+            username: ""
+            password: ""
+            tv_category: tv
+        - name: qbittorrent
+          type: qbittorrent
+          enable: true
+          priority: 2
+          remove_completed_downloads: true
+          remove_failed_downloads: true
+          fields:
+            host: gluetun
+            port: 8200
+            use_ssl: false
+            url_base: /
+            username: ""
+            password: ""
+            tv_category: tv
+      config:
+        enable_completed_download_handling: true
+        auto_redownload_failed: true
+        auto_redownload_failed_from_interactive_search: true
+      delete_unmanaged:
+        enabled: false
+    # Prefer an NZB when both protocols have a release. Torrents wait 60 minutes.
+    delay_profiles:
+      default:
+        enableUsenet: true
+        enableTorrent: true
+        preferredProtocol: usenet
+        usenetDelay: 0
+        torrentDelay: 60
+        bypassIfHighestQuality: false
+        bypassIfAboveCustomFormatScore: false
+        minimumCustomFormatScore: 0
+    # Usenet completes on /data, same volume as the library, so the import
+    # hardlinks. Torrents stay on /downloads; a cross-volume hardlink fails
+    # and Sonarr copies those.
+    media_management:
+      data:
+        use_hardlinks: true
+        copy_using_hardlinks: true
+
+radarr:
+  main:
+    base_url: http://radarr:7878
+    api_key: !env RADARR_API_KEY
+    root_folders:
+      - /data/media/movies
+    download_clients:
+      data:
+        - name: SABnzbd
+          type: sabnzbd
+          enable: true
+          priority: 1
+          remove_completed_downloads: true
+          remove_failed_downloads: true
+          fields:
+            host: sabnzbd
+            port: 8080
+            use_ssl: false
+            url_base: ""
+            api_key: !env SABNZBD_API_KEY
+            username: ""
+            password: ""
+            movie_category: movies
+        - name: qbittorrent
+          type: qbittorrent
+          enable: true
+          priority: 2
+          remove_completed_downloads: true
+          remove_failed_downloads: true
+          fields:
+            host: gluetun
+            port: 8200
+            use_ssl: false
+            url_base: /
+            username: ""
+            password: ""
+            movie_category: movies
+      config:
+        enable_completed_download_handling: true
+        auto_redownload_failed: true
+        auto_redownload_failed_from_interactive_search: true
+      delete_unmanaged:
+        enabled: false
+    delay_profiles:
+      default:
+        enableUsenet: true
+        enableTorrent: true
+        preferredProtocol: usenet
+        usenetDelay: 0
+        torrentDelay: 60
+        bypassIfHighestQuality: false
+        bypassIfAboveCustomFormatScore: false
+        minimumCustomFormatScore: 0
+    # Same as Sonarr: hardlink usenet imports on /data, copy torrents from /downloads.
+    media_management:
+      data:
+        use_hardlinks: true
+        copy_using_hardlinks: true
+
+lidarr:
+  main:
+    base_url: http://lidarr:8686
+    api_key: !env LIDARR_API_KEY
+    # Root folder /data/media/music already exists in Lidarr. Configarr rejects a
+    # bare path here (it wants metadata + quality profile objects) and then skips
+    # download clients entirely.
+    download_clients:
+      data:
+        - name: SABnzbd
+          type: sabnzbd
+          enable: true
+          priority: 1
+          remove_completed_downloads: true
+          remove_failed_downloads: true
+          fields:
+            host: sabnzbd
+            port: 8080
+            use_ssl: false
+            url_base: ""
+            api_key: !env SABNZBD_API_KEY
+            username: ""
+            password: ""
+            music_category: music
+        - name: qBittorrent
+          type: qbittorrent
+          enable: true
+          priority: 2
+          remove_completed_downloads: true
+          remove_failed_downloads: true
+          fields:
+            host: gluetun
+            port: 8200
+            use_ssl: false
+            url_base: /
+            username: ""
+            password: ""
+            music_category: lidarr
+      config:
+        enable_completed_download_handling: true
+        auto_redownload_failed: true
+      delete_unmanaged:
+        enabled: false
+    delay_profiles:
+      default:
+        enableUsenet: true
+        enableTorrent: true
+        preferredProtocol: usenet
+        usenetDelay: 0
+        torrentDelay: 60
+        bypassIfHighestQuality: false
+        bypassIfAboveCustomFormatScore: false
+        minimumCustomFormatScore: 0

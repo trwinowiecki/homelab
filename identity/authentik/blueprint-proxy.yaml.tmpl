@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+# Caddy forward-auth (domain level) — rendered by scripts/render_identity_blueprints.py
+
+version: 1
+metadata:
+  name: homelab-proxy-caddy
+  labels:
+    blueprints.goauthentik.io/description: Caddy forward-auth for admin UIs
+
+entries:
+  - model: authentik_providers_proxy.proxyprovider
+    id: homelab-proxy-provider
+    state: present
+    identifiers:
+      name: homelab-forward-auth
+    attrs:
+      name: homelab-forward-auth
+      mode: forward_domain
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      external_host: "{{AUTH_BASE_URL}}"
+      cookie_domain: "{{COOKIE_DOMAIN}}"
+      access_token_validity: hours=24
+      refresh_token_validity: days=30
+      redirect_uris:
+        - matching_mode: strict
+          url: "{{AUTH_BASE_URL}}/outpost.goauthentik.io/callback?X-authentik-auth-callback=true"
+        - matching_mode: strict
+          url: "{{AUTH_BASE_URL}}?X-authentik-auth-callback=true"
+
+  - model: authentik_core.application
+    id: homelab-proxy-application
+    state: present
+    identifiers:
+      slug: homelab-forward-auth
+    attrs:
+      name: Homelab Admin (Caddy)
+      slug: homelab-forward-auth
+      policy_engine_mode: any
+      provider: !KeyOf homelab-proxy-provider
+      meta_launch_url: "https://homepage.{{IDENTITY_LAN_DOMAIN}}"
+
+  - model: authentik_policies.policybinding
+    id: homelab-proxy-admin-binding
+    state: present
+    identifiers:
+      target: !KeyOf homelab-proxy-application
+      order: 0
+    attrs:
+      target: !KeyOf homelab-proxy-application
+      group: !Find [authentik_core.group, [name, admin]]
+      enabled: true
+
+  - model: authentik_outposts.outpost
+    state: present
+    identifiers:
+      name: authentik Embedded Outpost
+    attrs:
+      providers:
+        - !KeyOf homelab-proxy-provider

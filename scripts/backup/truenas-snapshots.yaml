@@ -1,0 +1,43 @@
+# Periodic ZFS snapshot tasks for TrueNAS SCALE.
+# Reconciled by scripts/backup/setup-truenas-snapshots.sh (via truenas_snapshots.py).
+#
+# Media is excluded on purpose: the library is re-downloadable. Snapshotting it
+# pins deleted files until retention expires and makes NAS free space lie.
+dataset: metrion/zinthos
+recursive: true
+exclude:
+  - metrion/zinthos/media
+tasks:
+  - naming_schema: auto-6h-%Y-%m-%d_%H-%M
+    lifetime_value: 2
+    lifetime_unit: DAY
+    schedule:
+      minute: "0"
+      hour: "0,6,12,18"
+      dom: "*"
+      month: "*"
+      dow: "*"
+    enabled: true
+    allow_empty: true
+  - naming_schema: auto-daily-%Y-%m-%d_%H-%M
+    lifetime_value: 14
+    lifetime_unit: DAY
+    schedule:
+      minute: "0"
+      hour: "4"
+      dom: "*"
+      month: "*"
+      dow: "*"
+    enabled: true
+    allow_empty: true
+  - naming_schema: auto-weekly-%Y-%m-%d_%H-%M
+    lifetime_value: 8
+    lifetime_unit: WEEK
+    schedule:
+      minute: "0"
+      hour: "5"
+      dom: "*"
+      month: "*"
+      dow: sun
+    enabled: true
+    allow_empty: true

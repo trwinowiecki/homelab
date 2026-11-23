@@ -1,0 +1,4 @@
+---
+# Docker socket for container health/stats on Homepage tiles.
+local:
+  socket: /var/run/docker.sock

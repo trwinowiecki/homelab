@@ -1,0 +1,10 @@
+[Unit]
+Description=Homelab restic backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 America/New_York
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

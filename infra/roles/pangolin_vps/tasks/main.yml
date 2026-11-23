@@ -1,0 +1,23 @@
+---
+- name: Baseline Pangolin VPS (swap, sshd, docker)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    # 2 GB swap if missing (Nanode OOM on docker pulls with stock swap)
+    if [[ ! -f /swapfile ]]; then
+      fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
+      chmod 600 /swapfile
+      mkswap /swapfile
+      swapon /swapfile
+      grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    fi
+    sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+    systemctl reload ssh || systemctl reload sshd || true
+    if ! command -v docker >/dev/null; then
+      curl -fsSL https://get.docker.com | sh
+    fi
+  args:
+    executable: /bin/bash
+
+- name: Remind to run pangolin/deploy.sh from workstation
+  ansible.builtin.debug:
+    msg: "VPS baseline done. App deploy remains: cd pangolin && ./deploy.sh"

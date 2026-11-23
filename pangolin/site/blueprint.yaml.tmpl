@@ -1,0 +1,82 @@
+# Pangolin resources for the home LAN, applied continuously by Newt.
+#
+# This file is the source of truth. Changes made in the Pangolin dashboard to
+# anything defined here are overwritten on the next apply — edit this file and
+# restart the newt container instead.
+#
+# `site:` and `sites:` are omitted throughout: when a blueprint is applied by
+# Newt, resources default to the site that applied them.
+#
+# Reference: https://docs.pangolin.net/manage/blueprints
+
+########################################
+# PUBLIC — reachable in any browser, no client app
+########################################
+
+public-resources:
+  jellyfin:
+    name: Jellyfin
+    mode: http
+    full-domain: jellyfin.${SITE_DOMAIN}
+    auth:
+      # Deliberately off. Jellyfin's native apps (Android TV, iOS, Roku) cannot
+      # complete a browser-based SSO flow, so enabling Pangolin auth here would
+      # break every client except the web player. Access control is Jellyfin's
+      # own user accounts; this resource is only a TLS-terminating proxy.
+      sso-enabled: false
+    targets:
+      - hostname: ${SITE_JELLYFIN_IP}
+        port: 8096
+        method: http
+
+  auth:
+    name: Authentik
+    mode: http
+    full-domain: auth.${SITE_DOMAIN}
+    auth:
+      # Tunnel + TLS only. Pangolin SSO here would loop with Authentik as the IdP.
+      # Users authenticate inside Authentik after the redirect from Pangolin OIDC.
+      sso-enabled: false
+    targets:
+      - hostname: ${SITE_ARRSTACK_IP}
+        port: 9000
+        method: http
+
+  seerr:
+    name: Seerr
+    mode: http
+    full-domain: seerr.${SITE_DOMAIN}
+    auth:
+      # Off — friends sign in with their Jellyfin accounts inside Seerr (same
+      # pattern as jellyfin.${SITE_DOMAIN}). Pangolin SSO would force Authentik
+      # accounts and a double login; keep jellyfin_users off the VPN allowlist.
+      sso-enabled: false
+    targets:
+      - hostname: ${SITE_ARRSTACK_IP}
+        port: 5055
+        method: http
+
+########################################
+# PRIVATE — requires the Pangolin client, admin only
+########################################
+
+private-resources:
+  adguard:
+    name: AdGuard Home
+    mode: host
+    destination: ${SITE_ADGUARD_IP}
+    # 53 for resolution; 80 and 3000 cover post-wizard and wizard UI ports.
+    tcp-ports: "53,80,3000"
+    udp-ports: "53"
+    # Pin grants here: Newt's continuous blueprint apply deletes dashboard
+    # user grants that are not listed. Admin role grants are preserved, but
+    # Admin cannot be named under roles: (reserved).
+    users:
+      - ${SITE_HOUSEHOLD_EMAIL_1}
+
+  home-lan:
+    name: Home LAN
+    mode: cidr
+    destination: ${SITE_LAN_CIDR}
+    users:
+      - ${SITE_HOUSEHOLD_EMAIL_1}

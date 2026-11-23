@@ -1,0 +1,53 @@
+name: deploy-now
+
+# Creates a GitHub Deployment request. The LAN deploy agent polls for it and
+# runs homelab-deploy. No LAN credentials are stored in GitHub.
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "Comma-separated auto-deploy targets (empty = detect from git diff)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  request:
+    runs-on: ubuntu-latest
+    environment: homelab
+    steps:
+      - name: Create deployment
+        env:
+          TARGETS: ${{ inputs.targets }}
+        uses: actions/github-script@ed597411d8f924073f98dfd95d19e618e3e8c63a # v8.0.0
+        with:
+          script: |
+            const targets = (process.env.TARGETS || '').trim();
+            const allowed = new Set(['arrstack','obsv','jellyfin','identity','pangolin/site']);
+            const list = targets === '' ? [] : targets.split(',').map(s => s.trim()).filter(Boolean);
+            for (const t of list) {
+              if (!allowed.has(t)) {
+                core.setFailed(`target not allowlisted: ${t}`);
+                return;
+              }
+            }
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: 'homelab',
+              auto_merge: false,
+              required_contexts: [],
+              description: 'Manual deploy-now request',
+              payload: { targets: list, requested_by: context.actor },
+            });
+            if (deployment.status === 201) {
+              core.info(`deployment id=${deployment.data.id}`);
+            } else {
+              core.setFailed(`unexpected status ${deployment.status}: ${JSON.stringify(deployment.data)}`);
+            }

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommitsDisabled"
+  ],
+  "timezone": "America/New_York",
+  "schedule": ["after 6am and before 10pm every day"],
+  "prConcurrentLimit": 5,
+  "minimumReleaseAge": "3 days",
+  "digest": {
+    "automerge": true,
+    "minimumReleaseAge": null
+  },
+  "patch": {
+    "automerge": true,
+    "minimumReleaseAge": null
+  },
+  "minor": {
+    "automerge": true
+  },
+  "major": {
+    "automerge": false
+  },
+  "packageRules": [
+    {
+      "description": "Group LinuxServer images",
+      "matchDatasources": ["docker"],
+      "matchPackagePatterns": ["^lscr\\.io/linuxserver/"],
+      "groupName": "linuxserver images"
+    },
+    {
+      "description": "Group Authentik server + ldap",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": [
+        "ghcr.io/goauthentik/server",
+        "ghcr.io/goauthentik/ldap"
+      ],
+      "groupName": "authentik"
+    },
+    {
+      "description": "Manual review for high-risk images",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": [
+        "qmcgaw/gluetun",
+        "ghcr.io/goauthentik/server",
+        "ghcr.io/goauthentik/ldap",
+        "jellyfin/jellyfin",
+        "postgres",
+        "library/postgres"
+      ],
+      "automerge": false,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "automerge": true,
+      "pinDigests": true
+    },
+    {
+      "matchManagers": ["nix"],
+      "groupName": "nix flake inputs"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Pangolin version pins in .env.example files",
+      "fileMatch": ["(^|/)pangolin/.*\\.env\\.example$"],
+      "matchStrings": [
+        "(?<depName>[A-Z0-9_]+)_VERSION=(?<currentValue>[^\\s#]+)"
+      ],
+      "datasourceTemplate": "docker",
+      "packageNameTemplate": "{{#if (eq depName 'PANGOLIN')}}fosrl/pangolin{{else if (eq depName 'GERBIL')}}fosrl/gerbil{{else if (eq depName 'NEWT')}}fosrl/newt{{else if (eq depName 'TRAEFIK')}}traefik{{else}}fosrl/{{depName}}{{/if}}"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+# Declarative Seerr bootstrap — applied by scripts/apply_arrstack_bootstrap.py
+# Refreshes Sonarr/Radarr API keys after seed/sync. Jellyfin first-admin remains manual.
+
+# Public URL for invites / notification links (Pangolin). LAN users can still
+# use https://seerr.${SITE_LAN_DOMAIN}; do not rewrite seerr.${SITE_DOMAIN} to Caddy.
+main:
+  applicationUrl: https://seerr.${SITE_DOMAIN}
+  # Friends authenticate via Jellyfin; disable local password sign-up on the public host.
+  localLogin: false
+  mediaServerLogin: true
+
+sonarr:
+  url: http://sonarr:8989
+  instances:
+    - name: Sonarr
+      quality_profile: WEB-1080p
+      root_folder: /data/media/tv
+      is_4k: false
+      is_default: true
+    - name: Sonarr 4K
+      quality_profile: WEB-2160p
+      root_folder: /data/media/tv
+      is_4k: true
+      is_default: true
+
+radarr:
+  url: http://radarr:7878
+  instances:
+    - name: Radarr
+      quality_profile: HD Bluray + WEB
+      root_folder: /data/media/movies
+      is_4k: false
+      is_default: true
+    - name: Radarr 4K
+      quality_profile: UHD Bluray + WEB
+      root_folder: /data/media/movies
+      is_4k: true
+      is_default: true

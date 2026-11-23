@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll GitHub for deploy-now every 5 minutes
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec={{ deployer_poll_interval_sec }}s
+Persistent=true
+Unit=homelab-deploy-poller.service
+
+[Install]
+WantedBy=timers.target

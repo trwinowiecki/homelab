@@ -1,0 +1,47 @@
+global:
+  scrape_interval: 30s
+  scrape_timeout: 20s
+
+scrape_configs:
+  - job_name: victoria-metrics
+    static_configs:
+      - targets: ["victoria-metrics:8428"]
+
+  - job_name: node
+    static_configs:
+      - targets: ["${SITE_PVE_HOST}:9100"]
+        labels:
+          host: pve
+
+  - job_name: pve
+    metrics_path: /pve
+    params:
+      module: [default]
+      cluster: ["1"]
+      node: ["1"]
+    static_configs:
+      - targets: ["${SITE_PVE_HOST}"]
+        labels:
+          host: pve
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: pve-exporter:9221
+
+  - job_name: linode-transfer
+    scrape_interval: 5m
+    static_configs:
+      - targets: ["linode-exporter:9102"]
+        labels:
+          host: pangolin-vps
+
+  - job_name: library
+    scrape_interval: 5m
+    scrape_timeout: 30s
+    static_configs:
+      - targets: ["library-exporter:9103"]
+        labels:
+          host: ct100-arrstack

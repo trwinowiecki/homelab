@@ -1,0 +1,83 @@
+groups:
+  - name: homelab-metrics
+    interval: 1m
+    rules:
+      - alert: ThinPoolDataCritical
+        expr: node_lvm_thin_pools_allocated > 80
+        for: 10m
+        labels:
+          source: vmalert-metrics
+        annotations:
+          description: 'pve thin pool Data% is {{ $value | printf "%.1f" }} (warn 80). df does not see this. A full pool fails writes on every LXC. Do not autoextend from here. The Discord cron on pve should also have paged.'
+
+      - alert: ThinPoolMetadataCritical
+        expr: node_lvm_thin_pools_metadata > 70
+        for: 10m
+        labels:
+          source: vmalert-metrics
+        annotations:
+          description: 'pve thin pool Meta% is {{ $value | printf "%.1f" }} (warn 70). Metadata exhaustion hangs writes even with free data space.'
+
+      - alert: PveNodeExporterDown
+        expr: up{job="node"} == 0
+        for: 5m
+        labels:
+          source: vmalert-metrics
+        annotations:
+          description: 'node_exporter on pve is down. Thin-pool metrics and host CPU/RAM graphs are stale. The thin-pool cron is the remaining page path. Check systemd prometheus-node-exporter on <pve-host>.'
+
+      - alert: PveExporterDown
+        expr: up{job="pve"} == 0
+        for: 5m
+        labels:
+          source: vmalert-metrics
+        annotations:
+          description: 'pve-exporter cannot scrape Proxmox. Guest-down alerts are blind. Set PVE_TOKEN_VALUE in obsv/.env (PVEAuditor token, privsep 1) and confirm <pve-host>:8006 is reachable from CT 100.'
+
+      - alert: PveGuestDown
+        expr: pve_up{id!~"node/.*"} == 0
+        for: 5m
+        labels:
+          source: vmalert-metrics
+        annotations:
+          description: 'Proxmox guest {{ $labels.id }} is down. If this is lxc/100, Discord from monocker/vmalert on CT 100 will also be dead.'
+
+      - alert: LinodeTransferWarn
+        expr: linode_account_transfer_used_gb / linode_account_transfer_quota_gb > 0.8
+        for: 15m
+        labels:
+          source: vmalert-metrics
+        annotations:
+          description: 'Linode Nanode monthly transfer used/quota is {{ $value }}. Warn threshold is 0.8. Cap remote Jellyfin quality before overage. Token/scrape lives in obsv linode-exporter.'
+
+      - alert: LinodeExporterDown
+        expr: linode_exporter_up == 0
+        for: 30m
+        labels:
+          source: vmalert-metrics
+        annotations:
+          description: 'linode-exporter cannot reach the Linode API. Transfer graphs are stale. Check LINODE_TOKEN in obsv/.env (account:read_only) and redeploy obsv.'
+
+      - alert: BackupStale
+        expr: time() - homelab_backup_last_success_timestamp_seconds > 129600
+        for: 30m
+        labels:
+          source: vmalert-metrics
+        annotations:
+          description: 'No successful homelab restic backup in 36h. Timer is homelab-backup.timer on pve (03:30 America/New_York). Check systemctl status homelab-backup on <pve-host> and /var/lib/prometheus/node-exporter/homelab-backup.prom.'
+
+      - alert: PangolinBackupFailed
+        expr: homelab_backup_pangolin_ok == 0
+        for: 6h
+        labels:
+          source: vmalert-metrics
+        annotations:
+          description: 'The last homelab backup did not include the Pangolin VPS config. pve could not SSH to the VPS, or the tar/restic leg failed. Check root SSH from <pve-host> and journalctl -u homelab-backup.'
+
+      - alert: BackupMetricMissing
+        expr: absent(homelab_backup_last_success_timestamp_seconds)
+        for: 6h
+        labels:
+          source: vmalert-metrics
+        annotations:
+          description: 'homelab_backup_last_success_timestamp_seconds is absent. Either the backup has never succeeded or the textfile collector on pve is stale. Check homelab-backup.timer and /usr/local/sbin/lvm-textfile.sh cron on pve.'

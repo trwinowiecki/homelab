@@ -1,0 +1,33 @@
+# AdGuard DNS rewrites for identity stack (split-horizon).
+# LAN clients resolve *.${SITE_LAN_DOMAIN} → arrstack host (not the Pangolin VPS).
+#
+# Apply with: ./deploy.sh adguard
+# Or merge into AdGuard Home UI: Filters → DNS rewrites.
+#
+# The wildcard catches any hostname under ${SITE_LAN_DOMAIN} so a missed per-host
+# entry cannot fall through to public DNS (Namecheap * used to answer the VPS).
+
+domain: ${SITE_LAN_DOMAIN}
+target: ${SITE_ARRSTACK_IP}
+
+rewrites:
+  - "*.${SITE_LAN_DOMAIN}"
+  - auth.${SITE_LAN_DOMAIN}
+  - sonarr.${SITE_LAN_DOMAIN}
+  - radarr.${SITE_LAN_DOMAIN}
+  - lidarr.${SITE_LAN_DOMAIN}
+  - prowlarr.${SITE_LAN_DOMAIN}
+  - bazarr.${SITE_LAN_DOMAIN}
+  - sabnzbd.${SITE_LAN_DOMAIN}
+  - qbittorrent.${SITE_LAN_DOMAIN}
+  - bindery.${SITE_LAN_DOMAIN}
+  - mixarr.${SITE_LAN_DOMAIN}
+  - homepage.${SITE_LAN_DOMAIN}
+  - portainer.${SITE_LAN_DOMAIN}
+  - dozzle.${SITE_LAN_DOMAIN}
+  - grafana.${SITE_LAN_DOMAIN}
+  - seerr.${SITE_LAN_DOMAIN}
+  - jellyfin.${SITE_LAN_DOMAIN}
+  - mealie.${SITE_LAN_DOMAIN}
+  - audiobookshelf.${SITE_LAN_DOMAIN}
+  - sync.${SITE_LAN_DOMAIN}

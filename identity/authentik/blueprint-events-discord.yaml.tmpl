@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+# Optional Discord copy of failed-login events.
+# Rendered when AUTHENTIK_DISCORD_WEBHOOK_URL is set (Slack-compatible URL).
+
+version: 1
+metadata:
+  name: homelab-events-discord
+  labels:
+    blueprints.goauthentik.io/description: Discord webhook for Authentik login failures
+
+entries:
+  - model: authentik_events.notificationtransport
+    id: discord-transport
+    state: present
+    identifiers:
+      name: homelab-discord-transport
+    attrs:
+      name: homelab-discord-transport
+      mode: webhook_slack
+      webhook_url: "{{AUTHENTIK_DISCORD_WEBHOOK_URL}}"
+
+  - model: authentik_events.notificationrule
+    id: notify-login-failed-discord
+    state: present
+    identifiers:
+      name: homelab-notify-login-failed-discord
+    attrs:
+      name: homelab-notify-login-failed-discord
+      severity: warning
+      group: !Find [authentik_core.group, [name, admin]]
+      transports:
+        - !KeyOf discord-transport
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf notify-login-failed-discord
+      order: 0
+    attrs:
+      target: !KeyOf notify-login-failed-discord
+      policy: !Find [authentik_policies_event_matcher.eventmatcherpolicy, [name, homelab-match-login-failed]]
+      enabled: true

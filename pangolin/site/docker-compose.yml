@@ -1,0 +1,46 @@
+########################################################################
+##  Newt — Pangolin site connector for the home LAN
+##
+##  Runs on CT 103 (newt) as its own compose project, deliberately
+##  separate from the MediaStack in ../../docker-compose.yaml. It must
+##  never share Gluetun's network namespace: it needs to reach LAN hosts
+##  (192.168.1.x) directly, not the VPN.
+##
+##  network_mode: host so hole punch advertises the LXC LAN address
+##  (<newt-host>) rather than a Docker bridge IP. Userspace WireGuard
+##  (default) — no /dev/net/tun needed in this unprivileged LXC.
+##
+##  Outbound only. No ports are published and no inbound firewall rule
+##  is needed on the AT&T gateway.
+##
+##  Documentation: https://docs.pangolin.net/manage/sites/configure-site
+########################################################################
+
+name: pangolin-site
+
+services:
+  newt:
+    image: docker.io/fosrl/newt:${NEWT_VERSION:?err}
+    container_name: newt
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - PANGOLIN_ENDPOINT=https://${PANGOLIN_DASHBOARD_DOMAIN:?err}
+      - NEWT_ID=${NEWT_ID:?err}
+      - NEWT_SECRET=${NEWT_SECRET:?err}
+      ##  Declarative mode: Newt keeps reapplying this file, so the
+      ##  blueprint is the source of truth and dashboard edits to these
+      ##  resources will be reverted on the next apply.
+      - BLUEPRINT_FILE=/config/blueprint.yaml
+      - DISABLE_CLIENTS=false
+      - LOG_LEVEL=INFO
+      - HEALTH_FILE=/tmp/healthy
+    volumes:
+      - ./blueprint.yaml:/config/blueprint.yaml:ro
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/healthy"]
+      interval: "30s"
+      timeout: "5s"
+      retries: 3

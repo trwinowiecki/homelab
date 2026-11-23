@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+# In-app notifications for failed logins (public auth.<domain>).
+
+version: 1
+metadata:
+  name: homelab-events
+  labels:
+    blueprints.goauthentik.io/description: Local notifications for failed Authentik logins
+
+entries:
+  - model: authentik_policies_event_matcher.eventmatcherpolicy
+    id: match-login-failed
+    state: present
+    identifiers:
+      name: homelab-match-login-failed
+    attrs:
+      name: homelab-match-login-failed
+      action: login_failed
+
+  - model: authentik_events.notificationrule
+    id: notify-login-failed
+    state: present
+    identifiers:
+      name: homelab-notify-login-failed
+    attrs:
+      name: homelab-notify-login-failed
+      severity: warning
+      group: !Find [authentik_core.group, [name, admin]]
+      transports:
+        - !Find [authentik_events.notificationtransport, [name, default-local-transport]]
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf notify-login-failed
+      order: 0
+    attrs:
+      target: !KeyOf notify-login-failed
+      policy: !KeyOf match-login-failed
+      enabled: true

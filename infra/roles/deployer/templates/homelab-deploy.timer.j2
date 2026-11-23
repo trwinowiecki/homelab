@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly homelab deploy (02:00 {{ deployer_timezone }})
+
+[Timer]
+OnCalendar={{ deployer_nightly_calendar }}
+Persistent=true
+RandomizedDelaySec=5m
+Unit=homelab-deploy.service
+
+[Install]
+WantedBy=timers.target

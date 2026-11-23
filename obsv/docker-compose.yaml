@@ -1,0 +1,285 @@
+name: obsv
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  victoria-logs:
+    image: victoriametrics/victoria-logs:v1.36.1@sha256:77de655798534241d3b6b9083de269721995046c68f85d5869855cb9e8e5a4a0
+    container_name: victoria-logs
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 512m
+    command:
+      - -storageDataPath=/vlogs
+      - -retentionPeriod=14d
+      - -httpListenAddr=:9428
+      - -memory.allowedBytes=256MB
+    ports:
+      # Loopback only. Vector writes over the Docker network; a LAN publish
+      # exposes VictoriaLogs' unauthenticated write/delete API.
+      - 127.0.0.1:${WEBUI_PORT_VICTORIALOGS:?err}:9428
+    volumes:
+      - /arrstack/obsv/victoria-logs:/vlogs
+    environment:
+      - TZ=${TIMEZONE:?err}
+
+  vector:
+    build:
+      context: .
+      dockerfile: vector/Dockerfile
+    image: homelab-vector:local
+    container_name: vector
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 128m
+    user: root
+    depends_on:
+      - victoria-logs
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /arrstack/obsv:/arrstack/obsv
+      - ./vector.yaml:/etc/vector/vector.yaml:ro
+      - ./vector/health_poll.py:/etc/vector/health_poll.py:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+
+  discord-relay:
+    build:
+      context: ./discord-relay
+    image: homelab-discord-relay:local
+    container_name: discord-relay
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 64m
+    environment:
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:?err}
+      - TZ=${TIMEZONE:?err}
+
+  log-watch:
+    build:
+      context: ./log-watch
+    image: homelab-log-watch:local
+    container_name: log-watch
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 64m
+    user: "${PUID:?err}:${PGID:?err}"
+    depends_on:
+      - victoria-logs
+      - discord-relay
+    volumes:
+      - ./log-alerts.yaml:/app/log-alerts.yaml:ro
+      - /arrstack/obsv/log-watch:/var/lib/log-watch
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - VLOGS_URL=http://victoria-logs:9428
+      - RELAY_URL=http://discord-relay:8080
+      - LOG_ALERTS_CONFIG=/app/log-alerts.yaml
+      - LOG_WATCH_STATE=/var/lib/log-watch/state.json
+
+  vmalert:
+    image: victoriametrics/vmalert:v1.117.0@sha256:d0b1012ffb57f05e6c850d4bd290e88986bfbafcc1a70b41016c863eb53f32ef
+    container_name: vmalert
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 64m
+    depends_on:
+      - victoria-logs
+      - discord-relay
+    command:
+      - -rule=/etc/vmalert/rules.yaml
+      - -datasource.url=http://victoria-logs:9428
+      - -notifier.url=http://discord-relay:8080
+      - -httpListenAddr=:8880
+      - -rule.defaultRuleType=vlogs
+      - -rule.evalDelay=5s
+    volumes:
+      - ./vmalert-rules.yaml:/etc/vmalert/rules.yaml:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+
+  monocker:
+    # Hub only publishes `latest` (no version tags). Digest is the 2024-11-05 image.
+    image: petersem/monocker:latest@sha256:6e6ced4bccdbbef0a30a5f92590c01ae868c576211d88c33248781a77f7db5f1
+    container_name: monocker
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 64m
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - SERVER_LABEL=monocker · ct100-arrstack
+      - MESSAGE_PLATFORM=discord@${DISCORD_WEBHOOK_URL:?err}
+      - ONLY_OFFLINE_STATES=true
+      - EXCLUDE_EXITED=false
+      - PERIOD=30
+      - DISABLE_STARTUP_MSG=false
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  dozzle:
+    image: amir20/dozzle:v8.14.2@sha256:780537a408fd8f3d6bd21aec44b23cc7fdf3387aafae57a3ddbdcd4d01026508
+    container_name: dozzle
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 64m
+    ports:
+      - 127.0.0.1:${WEBUI_PORT_DOZZLE:?err}:8080
+    networks:
+      - default
+      - mediastack
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - DOZZLE_NO_ANALYTICS=true
+      - DOZZLE_HOSTNAME=ct100-arrstack
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:v1.117.0@sha256:2093194e9c28343d264bf7098b72eee0351658827c5059e4ee3716f6279531be
+    container_name: victoria-metrics
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 256m
+    command:
+      - -storageDataPath=/vmstorage
+      - -retentionPeriod=30d
+      - -httpListenAddr=:8428
+      - -memory.allowedBytes=128MB
+      - -promscrape.config=/etc/victoriametrics/scrape.yml
+    ports:
+      # Loopback only. Grafana scrapes over the Docker network.
+      - 127.0.0.1:${WEBUI_PORT_VICTORIAMETRICS:?err}:8428
+    volumes:
+      - /arrstack/obsv/victoria-metrics:/vmstorage
+      - ./scrape.yml:/etc/victoriametrics/scrape.yml:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+    depends_on:
+      - pve-exporter
+      - linode-exporter
+      - library-exporter
+
+  vmalert-metrics:
+    image: victoriametrics/vmalert:v1.117.0@sha256:d0b1012ffb57f05e6c850d4bd290e88986bfbafcc1a70b41016c863eb53f32ef
+    container_name: vmalert-metrics
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 64m
+    depends_on:
+      - victoria-metrics
+      - discord-relay
+    command:
+      - -rule=/etc/vmalert/rules.yaml
+      - -datasource.url=http://victoria-metrics:8428
+      - -notifier.url=http://discord-relay:8080
+      - -httpListenAddr=:8881
+    volumes:
+      - ./vmalert-metrics-rules.yaml:/etc/vmalert/rules.yaml:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+
+  pve-exporter:
+    image: prompve/prometheus-pve-exporter:3.10.0@sha256:4867684c0a937716f11f770a32d32958bded507cf570fc334f774392afcb2f37
+    container_name: pve-exporter
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 64m
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - PVE_USER=${PVE_USER:?err}
+      - PVE_TOKEN_NAME=${PVE_TOKEN_NAME:?err}
+      - PVE_TOKEN_VALUE=${PVE_TOKEN_VALUE:?err}
+      - PVE_VERIFY_SSL=${PVE_VERIFY_SSL:?err}
+
+  linode-exporter:
+    build:
+      context: ./linode-exporter
+    image: homelab-linode-exporter:local
+    container_name: linode-exporter
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 32m
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - LINODE_TOKEN=${LINODE_TOKEN:?err}
+
+  library-exporter:
+    build:
+      context: ./library-exporter
+    image: homelab-library-exporter:local
+    container_name: library-exporter
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 64m
+    user: "${PUID:?err}:${PGID:?err}"
+    networks:
+      - default
+      - mediastack
+    volumes:
+      - ./library-exporter.yaml:/app/library-exporter.yaml:ro
+      - /arrstack/config/arrstack.auto.env:/arrstack/config/arrstack.auto.env:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - TRUENAS_API_KEY=${TRUENAS_API_KEY:-}
+      - LIBRARY_EXPORTER_CONFIG=/app/library-exporter.yaml
+      - AUTO_ENV_PATH=/arrstack/config/arrstack.auto.env
+
+  grafana:
+    # LAN only. Do not publish on Pangolin.
+    build:
+      context: ./grafana
+    image: homelab-grafana:local
+    container_name: grafana
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 256m
+    ports:
+      - 127.0.0.1:${WEBUI_PORT_GRAFANA:?err}:3000
+    networks:
+      - default
+      - mediastack
+    volumes:
+      - /arrstack/obsv/grafana:/var/lib/grafana
+      # Provisioning cannot bind-mount from /mnt/config: that CIFS share is 0770
+      # root:lxc_shares and Grafana runs as uid 472.
+      - /arrstack/obsv/grafana-provisioning:/etc/grafana/provisioning:ro
+      - /arrstack/obsv/grafana-dashboards:/etc/grafana/dashboards:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?err}
+      - GF_SERVER_ROOT_URL=${GF_SERVER_ROOT_URL:-}
+      - GF_AUTH_ANONYMOUS_ENABLED=${GF_AUTH_ANONYMOUS_ENABLED:-false}
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_AUTH_GENERIC_OAUTH_ENABLED=${GF_AUTH_OIDC_ENABLED:-false}
+      - GF_AUTH_GENERIC_OAUTH_NAME=Authentik
+      - GF_AUTH_GENERIC_OAUTH_CLIENT_ID=${GF_AUTH_OIDC_CLIENT_ID:-}
+      - GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET=${GF_AUTH_OIDC_CLIENT_SECRET:-}
+      - GF_AUTH_GENERIC_OAUTH_SCOPES=openid profile email
+      - GF_AUTH_GENERIC_OAUTH_AUTH_URL=${GF_AUTH_OIDC_AUTH_URL:-}
+      - GF_AUTH_GENERIC_OAUTH_TOKEN_URL=${GF_AUTH_OIDC_TOKEN_URL:-}
+      - GF_AUTH_GENERIC_OAUTH_API_URL=${GF_AUTH_OIDC_API_URL:-}
+      - GF_AUTH_SIGNOUT_REDIRECT_URL=${GF_AUTH_OIDC_SIGNOUT_URL:-}
+      - GF_AUTH_OAUTH_AUTO_LOGIN=${GF_AUTH_OIDC_AUTO_LOGIN:-false}
+      - GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP=true
+      - GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH=preferred_username
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_PATHS_PLUGINS=/opt/grafana-plugins
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/dashboards/homelab.json
+    depends_on:
+      - victoria-metrics
+      - victoria-logs
+
+networks:
+  # Caddy (identity project) reaches Grafana and Dozzle by name. Both stay on
+  # the default network too, so they can still reach VictoriaMetrics.
+  mediastack:
+    external: true
+    name: mediastack

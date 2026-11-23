@@ -1,0 +1,202 @@
+---
+# Homepage service tiles — synced to ${FOLDER_FOR_DATA}/homepage on deploy.
+# Browser links use HTTPS via Caddy (*.${SITE_LAN_DOMAIN}). Widgets use container DNS.
+
+- Media:
+    - Sonarr:
+        icon: sonarr.png
+        href: https://sonarr.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: TV automation
+        server: local
+        container: sonarr
+        siteMonitor: http://sonarr:8989
+        widget:
+          type: sonarr
+          url: http://sonarr:8989
+          key: {{HOMEPAGE_VAR_SONARR_API_KEY}}
+    - Radarr:
+        icon: radarr.png
+        href: https://radarr.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: Movie automation
+        server: local
+        container: radarr
+        siteMonitor: http://radarr:7878
+        widget:
+          type: radarr
+          url: http://radarr:7878
+          key: {{HOMEPAGE_VAR_RADARR_API_KEY}}
+    - Lidarr:
+        icon: lidarr.png
+        href: https://lidarr.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: Music automation
+        server: local
+        container: lidarr
+        siteMonitor: http://lidarr:8686
+        widget:
+          type: lidarr
+          url: http://lidarr:8686
+          key: {{HOMEPAGE_VAR_LIDARR_API_KEY}}
+    - Prowlarr:
+        icon: prowlarr.png
+        href: https://prowlarr.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: Indexers
+        server: local
+        container: prowlarr
+        siteMonitor: http://prowlarr:9696
+        widget:
+          type: prowlarr
+          url: http://prowlarr:9696
+          key: {{HOMEPAGE_VAR_PROWLARR_API_KEY}}
+    - Seerr:
+        icon: jellyseerr.png
+        href: https://seerr.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: Requests
+        server: local
+        container: seerr
+        siteMonitor: http://seerr:5055
+        widget:
+          type: seerr
+          url: http://seerr:5055
+          key: {{HOMEPAGE_VAR_SEERR_API_KEY}}
+    - Jellyfin:
+        icon: jellyfin.png
+        href: https://jellyfin.${SITE_LAN_DOMAIN}
+        description: Media server (CT 104)
+        siteMonitor: http://${SITE_JELLYFIN_IP}:8096
+        widget:
+          type: jellyfin
+          url: http://${SITE_JELLYFIN_IP}:8096
+          key: {{HOMEPAGE_VAR_JELLYFIN_API_KEY}}
+          version: 2
+          enableBlocks: true
+          enableNowPlaying: true
+    - Bazarr:
+        icon: bazarr.png
+        href: https://bazarr.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: Subtitles
+        server: local
+        container: bazarr
+        siteMonitor: http://bazarr:6767
+        widget:
+          type: bazarr
+          url: http://bazarr:6767
+          key: {{HOMEPAGE_VAR_BAZARR_API_KEY}}
+    - Audiobookshelf:
+        icon: audiobookshelf.png
+        href: https://audiobookshelf.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: Audiobooks
+        server: local
+        container: audiobookshelf
+        siteMonitor: http://audiobookshelf:80
+        widget:
+          type: audiobookshelf
+          url: http://audiobookshelf:80
+          key: {{HOMEPAGE_VAR_AUDIOBOOKSHELF_API_KEY}}
+    - Mixarr:
+        icon: lidarr.png
+        href: https://mixarr.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: Music discovery
+        server: local
+        container: mixarr
+        siteMonitor: http://mixarr:3010
+
+- Download:
+    - qBittorrent:
+        icon: qbittorrent.png
+        href: https://qbittorrent.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: Torrents (VPN)
+        server: local
+        container: qbittorrent
+        siteMonitor: http://gluetun:8200
+        widget:
+          type: qbittorrent
+          url: http://gluetun:8200
+          key: {{HOMEPAGE_VAR_QBITTORRENT_API_KEY}}
+    - SABnzbd:
+        icon: sabnzbd.png
+        href: https://sabnzbd.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: Usenet
+        server: local
+        container: sabnzbd
+        siteMonitor: http://sabnzbd:8080
+        widget:
+          type: sabnzbd
+          url: http://sabnzbd:8080
+          key: {{HOMEPAGE_VAR_SABNZBD_API_KEY}}
+    - Bindery:
+        icon: readarr.png
+        href: https://bindery.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: Audiobook acquisition
+        server: local
+        container: bindery
+        siteMonitor: http://bindery:8787
+
+- Kitchen:
+    - Mealie:
+        icon: mealie.png
+        href: https://mealie.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: Recipes and meal planning
+        server: local
+        container: mealie
+        siteMonitor: http://mealie:9000
+    - Sync Groceries:
+        icon: mdi-cart-arrow-right
+        href: https://sync.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}/sync?token={{HOMEPAGE_VAR_MEALIE_OG_SYNC_TOKEN}}
+        description: Mealie staging list → OurGroceries
+        server: local
+        container: mealie-og-sync
+        siteMonitor: http://mealie-og-sync:9926
+
+- Storage:
+    - TrueNAS:
+        icon: truenas.png
+        href: https://${SITE_TRUENAS_IP}
+        description: NAS pools (SCALE 25.04 websocket)
+        widget:
+          type: truenas
+          url: https://${SITE_TRUENAS_IP}
+          version: 2
+          key: {{HOMEPAGE_VAR_TRUENAS_API_KEY}}
+          enablePools: true
+          nasType: scale
+
+- Admin:
+    - Homepage:
+        icon: homepage.png
+        href: https://homepage.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: This dashboard
+        server: local
+        container: homepage
+        siteMonitor: http://homepage:3000
+    - Portainer:
+        icon: portainer.png
+        href: https://portainer.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: Container management
+        server: local
+        container: portainer
+        siteMonitor: http://portainer:9000
+        widget:
+          type: portainer
+          url: http://portainer:9000
+          env: 1
+          key: {{HOMEPAGE_VAR_PORTAINER_API_KEY}}
+    - Grafana:
+        icon: grafana.png
+        href: https://grafana.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: Metrics (obsv stack)
+        server: local
+        container: grafana
+        siteMonitor: http://grafana:3000/api/health
+        widget:
+          type: grafana
+          version: 2
+          url: http://grafana:3000
+          username: {{HOMEPAGE_VAR_GRAFANA_USERNAME}}
+          password: {{HOMEPAGE_VAR_GRAFANA_PASSWORD}}
+    - Dozzle:
+        icon: docker.png
+        href: https://dozzle.{{HOMEPAGE_VAR_IDENTITY_DOMAIN}}
+        description: Container logs (obsv stack)
+        server: local
+        container: dozzle
+        siteMonitor: http://dozzle:8080

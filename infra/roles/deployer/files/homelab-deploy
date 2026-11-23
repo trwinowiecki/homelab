@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+#
+# Pull-based deploy agent. Runs on CT 105.
+# Verifies signed commits on main, decrypts SOPS, maps changed paths to
+# ./deploy.sh targets. Nightly at 02:00, or via --now / GitHub Deployment poller.
+#
+set -euo pipefail
+
+REPO_DIR="${REPO_DIR:-/opt/homelab}"
+STATE_DIR="${STATE_DIR:-/var/lib/homelab-deploy}"
+LOCK_FILE="${LOCK_FILE:-/run/homelab-deploy.lock}"
+ALLOWED_SIGNERS="${ALLOWED_SIGNERS:-/etc/homelab/allowed_signers}"
+AGE_KEY="${SOPS_AGE_KEY_FILE:-/etc/homelab/age.key}"
+DISCORD_WEBHOOK_FILE="${DISCORD_WEBHOOK_FILE:-/etc/homelab/discord-webhook}"
+DEPLOYED_SHA_FILE="$STATE_DIR/deployed.sha"
+DEFERRED_FILE="$STATE_DIR/deferred.targets"
+BRANCH="${BRANCH:-main}"
+
+AUTO_TARGETS=(arrstack obsv jellyfin identity pangolin/site)
+NOW=false
+DRY_RUN=false
+SKIP_STREAM_GUARD=false
+REQUESTED_TARGETS=()
+
+usage() {
+  cat <<'EOF'
+Usage: homelab-deploy [--now] [--dry-run] [--skip-stream-guard] [targets...]
+  --now                 run immediately (skip jellyfin stream deferral)
+  --dry-run             print plan only
+  --skip-stream-guard   deploy jellyfin even if sessions are active
+  targets               allowlisted: arrstack obsv jellyfin identity pangolin/site
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --now) NOW=true; SKIP_STREAM_GUARD=true; shift ;;
+    --dry-run) DRY_RUN=true; shift ;;
+    --skip-stream-guard) SKIP_STREAM_GUARD=true; shift ;;
+    -h|--help) usage; exit 0 ;;
+    arrstack|obsv|jellyfin|identity|pangolin/site) REQUESTED_TARGETS+=("$1"); shift ;;
+    *) echo "ERROR: unknown arg: $1" >&2; usage; exit 1 ;;
+  esac
+done
+
+notify() {
+  local msg=$1
+  echo "$msg"
+  if [[ -f $DISCORD_WEBHOOK_FILE ]]; then
+    local url
+    url=$(tr -d '\n' <"$DISCORD_WEBHOOK_FILE")
+    [[ -n $url ]] || return 0
+    curl -fsS -H 'Content-Type: application/json' \
+      -d "$(jq -n --arg c "$msg" '{content:$c}')" \
+      "$url" >/dev/null || true
+  fi
+}
+
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  echo "another homelab-deploy is running"
+  exit 0
+fi
+
+mkdir -p "$STATE_DIR"
+cd "$REPO_DIR"
+export SOPS_AGE_KEY_FILE="$AGE_KEY"
+export GIT_CONFIG_COUNT=1
+export GIT_CONFIG_KEY_0=gpg.ssh.allowedSignersFile
+export GIT_CONFIG_VALUE_0="$ALLOWED_SIGNERS"
+
+echo "==> fetch $BRANCH"
+git fetch --prune origin
+git checkout "$BRANCH"
+git merge --ff-only "origin/$BRANCH"
+
+HEAD=$(git rev-parse HEAD)
+echo "HEAD=$HEAD"
+
+echo "==> verify commit signature"
+if ! git verify-commit "$HEAD" 2>/tmp/homelab-verify.err; then
+  # Also accept SSH signed commits via allowed_signers
+  if ! git verify-commit --raw "$HEAD" >/tmp/homelab-verify.out 2>&1; then
+    cat /tmp/homelab-verify.err >&2 || true
+    notify "homelab-deploy REFUSED unsigned/bad signature at $HEAD"
+    exit 1
+  fi
+fi
+
+PREV=""
+[[ -f $DEPLOYED_SHA_FILE ]] && PREV=$(cat "$DEPLOYED_SHA_FILE")
+
+map_targets() {
+  local from=${1:-}
+  local files
+  if [[ -z $from ]]; then
+    # First run: deploy everything auto
+    printf '%s\n' "${AUTO_TARGETS[@]}"
+    return
+  fi
+  files=$(git diff --name-only "$from..$HEAD" || true)
+  declare -A want=()
+  while IFS= read -r f; do
+    [[ -z $f ]] && continue
+    case "$f" in
+      docker-compose.yaml|restart*.sh|.env.sops.env|arrstack/*|scripts/bootstrap/*|scripts/apply_arrstack*|scripts/seed_arrstack*|scripts/sync_arrstack*|scripts/check_env.py|scripts/qbit*)
+        want[arrstack]=1 ;;
+      obsv/*) want[obsv]=1 ;;
+      jellyfin/*) want[jellyfin]=1 ;;
+      identity/*|scripts/render_identity*|scripts/apply_identity*|scripts/sync_identity*|scripts/sync_ldap*|scripts/sync_jellyfin_ldap*|scripts/seed_identity*)
+        want[identity]=1 ;;
+      pangolin/site/*) want[pangolin/site]=1 ;;
+      adguard/*|scripts/secrets.sh|secrets/*|deploy.sh)
+        # secrets/deploy.sh changes may affect multiple; arrstack+identity safe default
+        want[arrstack]=1; want[identity]=1; want[obsv]=1 ;;
+    esac
+  done <<<"$files"
+  for t in "${AUTO_TARGETS[@]}"; do
+    [[ ${want[$t]+x} ]] && echo "$t"
+  done
+}
+
+if [[ ${#REQUESTED_TARGETS[@]} -gt 0 ]]; then
+  TARGETS=("${REQUESTED_TARGETS[@]}")
+else
+  mapfile -t TARGETS < <(map_targets "$PREV")
+fi
+
+# Merge previously deferred jellyfin
+if [[ -f $DEFERRED_FILE && $NOW == false ]]; then
+  while IFS= read -r t; do
+    [[ -z $t ]] && continue
+    TARGETS+=("$t")
+  done <"$DEFERRED_FILE"
+  # unique
+  mapfile -t TARGETS < <(printf '%s\n' "${TARGETS[@]}" | awk 'NF && !seen[$0]++')
+fi
+
+if [[ ${#TARGETS[@]} -eq 0 ]]; then
+  echo "nothing to deploy"
+  echo "$HEAD" >"$DEPLOYED_SHA_FILE"
+  exit 0
+fi
+
+jellyfin_busy() {
+  # Optional: query Jellyfin Sessions. Requires rendered jellyfin/.env with API key.
+  local envf="$REPO_DIR/jellyfin/.env"
+  [[ -f $envf ]] || return 1
+  # shellcheck disable=SC1090
+  set -a; source "$envf"; set +a
+  local base="${JELLYFIN_PUBLISHED_SERVER_URL:-}"
+  local key="${JELLYFIN_API_KEY:-}"
+  [[ -n $base && -n $key ]] || return 1
+  local n
+  n=$(curl -fsS -H "Authorization: MediaBrowser Token=$key" \
+    "${base%/}/Sessions" 2>/dev/null \
+    | jq '[.[] | select(.NowPlayingItem != null)] | length' 2>/dev/null || echo 0)
+  [[ ${n:-0} -gt 0 ]]
+}
+
+FINAL=()
+DEFER=()
+for t in "${TARGETS[@]}"; do
+  if [[ $t == jellyfin && $SKIP_STREAM_GUARD == false ]]; then
+    if jellyfin_busy; then
+      DEFER+=("$t")
+      notify "homelab-deploy: deferring jellyfin (active streams) until next night"
+      continue
+    fi
+  fi
+  FINAL+=("$t")
+done
+
+if [[ ${#DEFER[@]} -gt 0 ]]; then
+  printf '%s\n' "${DEFER[@]}" >"$DEFERRED_FILE"
+else
+  rm -f "$DEFERRED_FILE"
+fi
+
+echo "plan: ${FINAL[*]:-(none)}"
+if [[ $DRY_RUN == true ]]; then
+  exit 0
+fi
+
+if [[ ${#FINAL[@]} -eq 0 ]]; then
+  echo "$HEAD" >"$DEPLOYED_SHA_FILE"
+  exit 0
+fi
+
+./scripts/secrets.sh decrypt
+python3 scripts/render_site_templates.py
+
+# Ordering: arrstack before identity; never parallel.
+ORDERED=()
+for t in arrstack identity obsv jellyfin; do
+  for x in "${FINAL[@]}"; do
+    [[ $x == "$t" ]] && ORDERED+=("$t")
+  done
+done
+for x in "${FINAL[@]}"; do
+  [[ $x == pangolin/site ]] && ORDERED+=("pangolin/site")
+done
+mapfile -t ORDERED < <(printf '%s\n' "${ORDERED[@]}" | awk 'NF && !seen[$0]++')
+
+for t in "${ORDERED[@]}"; do
+  echo "==> deploy $t"
+  case "$t" in
+    pangolin/site)
+      (cd pangolin/site && ./deploy.sh)
+      ;;
+    *)
+      ./deploy.sh "$t"
+      ;;
+  esac
+done
+
+echo "$HEAD" >"$DEPLOYED_SHA_FILE"
+notify "homelab-deploy OK $HEAD → ${ORDERED[*]}"

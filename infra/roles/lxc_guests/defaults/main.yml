@@ -1,0 +1,37 @@
+---
+lxc_guests:
+  - id: 100
+    hostname: arrstack
+    cores: 3
+    memory: 8192
+    rootfs_gb: 316
+    features: nesting=1
+    notes: "tun + media/config binds; Docker"
+  - id: 102
+    hostname: adguard
+    cores: 1
+    memory: 1024
+    rootfs_gb: 4
+    features: nesting=1
+    notes: "AdGuard Home binary"
+  - id: 103
+    hostname: newt
+    cores: 1
+    memory: 1024
+    rootfs_gb: 8
+    features: nesting=1,keyctl=1
+    notes: "Pangolin Newt"
+  - id: 104
+    hostname: jellyfin-docker
+    cores: 3
+    memory: 4096
+    rootfs_gb: 32
+    features: nesting=1
+    notes: "GPU renderD128; media/config binds"
+  - id: 105
+    hostname: deployer
+    cores: 1
+    memory: 512
+    rootfs_gb: 8
+    features: nesting=1,keyctl=1
+    notes: "GitOps deploy agent"

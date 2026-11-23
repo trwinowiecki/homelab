@@ -1,0 +1,73 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+# Homelab RBAC groups — mounted at /blueprints/homelab/ (see identity/docker-compose.yaml).
+# Providers/apps: docs/identity/deploy.md (Proxy provider slug → AUTHENTIK_PROXY_PROVIDER_SLUG).
+# notes show in Authentik Directory → Groups → Attributes (no dedicated description field).
+
+version: 1
+metadata:
+  name: homelab-groups
+  labels:
+    blueprints.goauthentik.io/description: Homelab RBAC groups
+
+entries:
+  - model: authentik_core.group
+    id: group-admin
+    state: present
+    identifiers:
+      name: admin
+    attrs:
+      name: admin
+      is_superuser: true
+      attributes:
+        notes: >-
+          Stack operators. Authentik superuser. Caddy forward-auth for *arr admin
+          UIs (Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, SABnzbd, qBittorrent,
+          Bindery, Mixarr, Homepage, Dozzle, Portainer, mealie-og-sync). OIDC
+          for Portainer and Grafana. Also allowed Pangolin VPN login (same as
+          the vpn group). Does not grant Mealie, Audiobookshelf, or Jellyfin
+          unless the user is also in those groups. Browser login requires
+          TOTP or a passkey plus backup codes.
+
+  - model: authentik_core.group
+    id: group-household
+    state: present
+    identifiers:
+      name: household
+    attrs:
+      name: household
+      attributes:
+        notes: >-
+          Family apps. OIDC for Mealie and Audiobookshelf (user created on first
+          login). Does not grant *arr admin UIs, Grafana, Authentik superuser,
+          or Pangolin VPN.
+
+  - model: authentik_core.group
+    id: group-jellyfin-users
+    state: present
+    identifiers:
+      name: jellyfin_users
+    attrs:
+      name: jellyfin_users
+      attributes:
+        notes: >-
+          Jellyfin via LDAP (TVs and apps; same username/password). Seerr uses
+          the Jellyfin account, not this group directly. Friends belong here
+          only — do not add them to vpn or admin. Public access is
+          jellyfin.<domain> / seerr.<domain>.
+
+  - model: authentik_core.group
+    id: group-vpn
+    state: present
+    identifiers:
+      name: vpn
+    attrs:
+      name: vpn
+      attributes:
+        notes: >-
+          Pangolin client VPN login (OIDC). Does not grant *arr admin UIs,
+          Grafana, or Authentik superuser — those still need admin. After adding
+          someone here, also create an External user in the Pangolin org and add
+          their email to pangolin/site/blueprint.yaml private-resources.users
+          (or a Pangolin role). Browser login requires TOTP or a passkey plus
+          backup codes. Do not put household/friends here unless they should
+          reach the LAN.

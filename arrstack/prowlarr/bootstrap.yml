@@ -1,0 +1,61 @@
+# Declarative Prowlarr bootstrap — applied by scripts/apply_arrstack_bootstrap.py
+# Indexer API keys: set NZBGEEK_API_KEY / DRUNKENSLUG_API_KEY in .env or leave empty to skip.
+
+apps:
+  sonarr:
+    type: sonarr
+    instance_name: sonarr
+    sync_level: fullSync
+    base_url: http://sonarr:8989
+    prowlarr_url: http://prowlarr:9696
+  radarr:
+    type: radarr
+    instance_name: radarr
+    sync_level: fullSync
+    base_url: http://radarr:7878
+    prowlarr_url: http://prowlarr:9696
+  lidarr:
+    type: lidarr
+    instance_name: lidarr
+    sync_level: fullSync
+    base_url: http://lidarr:8686
+    prowlarr_url: http://prowlarr:9696
+
+indexer_proxy:
+  flaresolverr:
+    type: flaresolverr
+    host_url: http://flaresolverr:8191/
+    tags:
+      - flaresolverr
+
+indexers:
+  - name: Nyaa
+    type: nyaasi
+    priority: 25
+    sync_profile: Standard
+  - name: 1337x
+    type: 1337x
+    priority: 25
+    sync_profile: Standard
+    tags:
+      - flaresolverr
+  - name: PirateBay
+    type: thepiratebay
+    priority: 30
+    sync_profile: Standard
+  - name: YTS
+    type: yts
+    priority: 30
+    sync_profile: Standard
+
+  - name: NZBGeek
+    type: newznab
+    base_url: https://api.nzbgeek.info
+    api_key_env: NZBGEEK_API_KEY
+    categories:
+      - 2000
+      - 5000
+      - 3000
+      - 7000
+    # Lower wins. NZBGeek stays ahead of the torrent indexers (25 and 30).
+    priority: 1

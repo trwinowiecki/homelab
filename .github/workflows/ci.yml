@@ -1,0 +1,91 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@e797f83bcb11b83ae66e0320cd809461e6c4e061 # v6.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Python deps
+        run: pip install -r requirements-dev.txt
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s scripts/tests
+
+      - name: SOPS / plaintext secret guard
+        run: python3 scripts/ci_sops_guard.py
+
+      - name: Render site templates from example
+        run: |
+          cp secrets/site.env.example secrets/site.env
+          python3 scripts/render_site_templates.py
+          # CI must never keep a real site.env; example values only
+          rm -f secrets/site.env
+
+      - name: Install Compose plugin
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose-v2
+
+      - name: Compose config (arrstack)
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.yaml --env-file .env config >/dev/null
+          python3 scripts/check_env.py --env-file .env || true
+          rm -f .env
+
+      - name: Compose config (identity / jellyfin / obsv)
+        run: |
+          cp identity/.env.example identity/.env
+          # identity compose needs a rendered Caddyfile for config; create a stub
+          mkdir -p identity/caddy
+          echo '# ci stub' > identity/caddy/Caddyfile
+          docker compose -f identity/docker-compose.yaml --env-file identity/.env config >/dev/null || true
+          rm -f identity/.env identity/caddy/Caddyfile
+          cp jellyfin/.env.example jellyfin/.env
+          docker compose -f jellyfin/docker-compose.yaml --env-file jellyfin/.env config >/dev/null
+          rm -f jellyfin/.env
+          cp obsv/.env.example obsv/.env
+          docker compose -f obsv/docker-compose.yaml --env-file obsv/.env config >/dev/null
+          rm -f obsv/.env
+
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e8063f1 # 2.0.1
+        with:
+          scandir: .
+          ignore_paths: pangolin/.rendered
+        env:
+          SHELLCHECK_OPTS: --severity=1091
+
+      - name: Yamllint
+        run: |
+          pip install yamllint
+          yamllint -d '{extends: relaxed, rules: {line-length: disable, truthy: disable}}' \
+            adguard arrstack identity jellyfin obsv infra .github 2>/dev/null || \
+          yamllint -d '{extends: relaxed, rules: {line-length: disable, truthy: disable}}' \
+            adguard arrstack identity jellyfin obsv .github
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@ff501ca45f4ee9d54a8a291f45454f1cbbe0e7c2 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

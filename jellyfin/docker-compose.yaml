@@ -1,0 +1,47 @@
+name: jellyfin
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  ###########################################################################
+  ##  Jellyfin — media server (dedicated CT 104; isolated from arrstack)
+  ##  Official image: linuxserver has not published 12.0 yet.
+  ##  Layout matches linuxserver (/config + /config/data) for bootstrap + migrate.
+  ##  https://hub.docker.com/r/jellyfin/jellyfin
+  ###########################################################################
+  jellyfin:
+    image: jellyfin/jellyfin:12.0@sha256:baba630419915985442f315f08b0cf46d9f4c8a0cc4bd38e94a6d35751dd5ef5
+    container_name: jellyfin
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 4096m
+    user: "${PUID:?err}:${PGID:?err}"
+    ports:
+      - "${LOCAL_DOCKER_IP:?err}:${WEBUI_PORT_JELLYFIN:?err}:8096"
+    volumes:
+      - ${JELLYFIN_CONFIG_DIR:?err}:/config
+      - ${FOLDER_FOR_MEDIA:?err}:/mnt/media
+    devices:
+      - /dev/dri:/dev/dri
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - JELLYFIN_PublishedServerUrl=${JELLYFIN_PUBLISHED_SERVER_URL:?err}
+      - JELLYFIN_CONFIG_DIR=/config
+      - JELLYFIN_DATA_DIR=/config/data
+      - JELLYFIN_LOG_DIR=/config/log
+      - JELLYFIN_CACHE_DIR=/config/cache
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.10.0/24
+          gateway: 172.28.10.1

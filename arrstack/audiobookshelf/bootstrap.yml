@@ -1,0 +1,18 @@
+# Declarative Audiobookshelf bootstrap — applied by scripts/apply_arrstack_bootstrap.py
+# Root credentials: AUDIOBOOKSHELF_USERNAME / AUDIOBOOKSHELF_PASSWORD in .env
+# First-run /init creates a root user (username defaults to root, not admin).
+
+libraries:
+  - name: Audiobooks
+    path: /books
+    media_type: book
+    provider: audible
+    icon: audiobookshelf
+
+# OIDC via Authentik — secrets from identity/.env (applied when AUDIOBOOKSHELF_OIDC_ENABLED=true)
+oidc:
+  enabled: true
+  match_users_by: username
+  auto_register: true
+  auto_launch: false
+  button_text: Login with Authentik

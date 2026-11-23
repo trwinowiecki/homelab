@@ -1,0 +1,245 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+# Recovery without SMTP. Public "Forgot password?" only tells people to ask
+# the house admin. Admin-generated recovery links skip that and set a password.
+
+version: 1
+metadata:
+  name: homelab-recovery-flow
+  labels:
+    blueprints.goauthentik.io/description: Admin recovery links; no email reset
+
+entries:
+  - model: authentik_policies_expression.expressionpolicy
+    id: recovery-fresh-start
+    state: present
+    identifiers:
+      name: homelab-recovery-fresh-start
+    attrs:
+      name: homelab-recovery-fresh-start
+      expression: |
+        return not request.context.get("is_restored", False)
+
+  - model: authentik_policies_expression.expressionpolicy
+    id: recovery-from-token
+    state: present
+    identifiers:
+      name: homelab-recovery-from-token
+    attrs:
+      name: homelab-recovery-from-token
+      expression: |
+        return bool(request.context.get("is_restored", False))
+
+  - model: authentik_stages_identification.identificationstage
+    id: recovery-identification
+    state: present
+    identifiers:
+      name: homelab-recovery-identification
+    attrs:
+      name: homelab-recovery-identification
+      user_fields:
+        - username
+        - email
+      pretend_user_exists: true
+      case_insensitive_matching: true
+
+  - model: authentik_stages_deny.denystage
+    id: recovery-ask-admin
+    state: present
+    identifiers:
+      name: homelab-recovery-ask-admin
+    attrs:
+      name: homelab-recovery-ask-admin
+      deny_message: >-
+        Password reset is not self-serve. Ask the house admin to send a
+        recovery link (Authentik → Directory → Users → your account →
+        Create Recovery Link).
+
+  - model: authentik_stages_prompt.prompt
+    id: recovery-field-password
+    state: present
+    identifiers:
+      name: homelab-recovery-field-password
+    attrs:
+      name: homelab-recovery-field-password
+      field_key: password
+      label: New password
+      type: password
+      required: true
+      placeholder: New password
+      order: 0
+      placeholder_expression: false
+
+  - model: authentik_stages_prompt.prompt
+    id: recovery-field-password-repeat
+    state: present
+    identifiers:
+      name: homelab-recovery-field-password-repeat
+    attrs:
+      name: homelab-recovery-field-password-repeat
+      field_key: password_repeat
+      label: New password (repeat)
+      type: password
+      required: true
+      placeholder: New password (repeat)
+      order: 1
+      placeholder_expression: false
+
+  - model: authentik_stages_prompt.promptstage
+    id: recovery-password-prompt
+    state: present
+    identifiers:
+      name: homelab-recovery-password
+    attrs:
+      name: homelab-recovery-password
+      fields:
+        - !KeyOf recovery-field-password
+        - !KeyOf recovery-field-password-repeat
+
+  - model: authentik_stages_user_write.userwritestage
+    id: recovery-user-write
+    state: present
+    identifiers:
+      name: homelab-recovery-user-write
+    attrs:
+      name: homelab-recovery-user-write
+      user_creation_mode: never_create
+
+  - model: authentik_stages_user_login.userloginstage
+    id: recovery-user-login
+    state: present
+    identifiers:
+      name: homelab-recovery-user-login
+    attrs:
+      name: homelab-recovery-user-login
+      session_duration: days=30
+
+  - model: authentik_flows.flow
+    id: recovery-flow
+    state: present
+    identifiers:
+      slug: homelab-recovery-flow
+    attrs:
+      name: Homelab recovery
+      slug: homelab-recovery-flow
+      title: Reset your password
+      designation: recovery
+      authentication: require_unauthenticated
+
+  - model: authentik_flows.flowstagebinding
+    id: recovery-bind-identification
+    state: present
+    identifiers:
+      target: !KeyOf recovery-flow
+      stage: !KeyOf recovery-identification
+      order: 10
+    attrs:
+      target: !KeyOf recovery-flow
+      stage: !KeyOf recovery-identification
+      order: 10
+      re_evaluate_policies: true
+
+  - model: authentik_flows.flowstagebinding
+    id: recovery-bind-ask-admin
+    state: present
+    identifiers:
+      target: !KeyOf recovery-flow
+      stage: !KeyOf recovery-ask-admin
+      order: 20
+    attrs:
+      target: !KeyOf recovery-flow
+      stage: !KeyOf recovery-ask-admin
+      order: 20
+      evaluate_on_plan: false
+      re_evaluate_policies: true
+
+  - model: authentik_flows.flowstagebinding
+    id: recovery-bind-password
+    state: present
+    identifiers:
+      target: !KeyOf recovery-flow
+      stage: !KeyOf recovery-password-prompt
+      order: 30
+    attrs:
+      target: !KeyOf recovery-flow
+      stage: !KeyOf recovery-password-prompt
+      order: 30
+      evaluate_on_plan: false
+      re_evaluate_policies: true
+
+  - model: authentik_flows.flowstagebinding
+    id: recovery-bind-write
+    state: present
+    identifiers:
+      target: !KeyOf recovery-flow
+      stage: !KeyOf recovery-user-write
+      order: 40
+    attrs:
+      target: !KeyOf recovery-flow
+      stage: !KeyOf recovery-user-write
+      order: 40
+      evaluate_on_plan: false
+      re_evaluate_policies: true
+
+  - model: authentik_flows.flowstagebinding
+    id: recovery-bind-login
+    state: present
+    identifiers:
+      target: !KeyOf recovery-flow
+      stage: !KeyOf recovery-user-login
+      order: 100
+    attrs:
+      target: !KeyOf recovery-flow
+      stage: !KeyOf recovery-user-login
+      order: 100
+      evaluate_on_plan: false
+      re_evaluate_policies: true
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf recovery-bind-identification
+      order: 0
+    attrs:
+      target: !KeyOf recovery-bind-identification
+      policy: !KeyOf recovery-fresh-start
+      enabled: true
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf recovery-bind-ask-admin
+      order: 0
+    attrs:
+      target: !KeyOf recovery-bind-ask-admin
+      policy: !KeyOf recovery-fresh-start
+      enabled: true
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf recovery-bind-password
+      order: 0
+    attrs:
+      target: !KeyOf recovery-bind-password
+      policy: !KeyOf recovery-from-token
+      enabled: true
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf recovery-bind-write
+      order: 0
+    attrs:
+      target: !KeyOf recovery-bind-write
+      policy: !KeyOf recovery-from-token
+      enabled: true
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf recovery-bind-login
+      order: 0
+    attrs:
+      target: !KeyOf recovery-bind-login
+      policy: !KeyOf recovery-from-token
+      enabled: true

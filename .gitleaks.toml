@@ -1,0 +1,13 @@
+title = "homelab gitleaks"
+
+[extend]
+useDefault = true
+
+# Upstream MediaStack docs ship example Headscale/CrowdSec keys; they are not ours.
+[[allowlists]]
+description = "Upstream example credentials in docs/upstream-mediastack.md"
+paths = ['''docs/upstream-mediastack\.md''']
+
+[[allowlists]]
+description = "SOPS encrypted files"
+paths = ['''.*\.sops\.(env|ya?ml)$''']

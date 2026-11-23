@@ -1,0 +1,42 @@
+# SABnzbd usenet client — applied by scripts/bootstrap/sabnzbd.py.
+# Provider credentials stay in .env (USENET_*). Do not put passwords here.
+
+# Incomplete articles stay on the SSD. The extracted video does not need to
+# seed, so complete/ is on the media share (/data). Sonarr/Radarr/Lidarr import
+# from there into /data/media and can hardlink instead of copying.
+complete_dir: /data/usenet/complete
+incomplete_dir: /downloads/usenet/incomplete
+
+server:
+  name: frugal
+  host_env: USENET_HOST
+  port_env: USENET_PORT
+  username_env: USENET_USERNAME
+  password_env: USENET_PASSWORD
+  ssl_env: USENET_SSL
+  connections_env: USENET_CONNECTIONS
+  connections_default: 50
+
+# One direct-unpack at a time, and pause downloading while it runs. Parallel
+# extracts plus a full-speed grab fill the SSD cache and stall every other
+# service. 512M is the article cache, sized for CT 100's 8 GB.
+performance:
+  direct_unpack: "1"
+  direct_unpack_threads: "1"
+  pause_on_post_processing: "1"
+  cache_limit: 512M
+
+# Discard a second copy of an NZB already in the queue or history.
+# Sonarr/Radarr/Lidarr delete the SSD files after a successful import.
+cleanup:
+  no_dupes: "1"
+
+categories:
+  - name: tv
+    dir: tv
+  - name: movies
+    dir: movies
+  - name: music
+    dir: music
+  - name: audio
+    dir: audio

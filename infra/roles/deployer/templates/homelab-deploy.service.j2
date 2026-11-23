@@ -1,0 +1,13 @@
+[Unit]
+Description=Homelab pull-based deploy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=REPO_DIR={{ deployer_repo_dir }}
+Environment=SOPS_AGE_KEY_FILE=/etc/homelab/age.key
+Environment=ALLOWED_SIGNERS=/etc/homelab/allowed_signers
+Environment=BRANCH={{ deployer_branch }}
+ExecStart=/usr/local/sbin/homelab-deploy
+Nice=10

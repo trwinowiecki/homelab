@@ -1,0 +1,5 @@
+# Mealie → OurGroceries sync routing (store names only; safe to commit).
+staging_list: "Weekly Meals (staging)"
+default_list: "Meijer"
+overrides:
+  yogurt: "Trader Joes"

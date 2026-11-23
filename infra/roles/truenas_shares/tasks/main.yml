@@ -1,0 +1,6 @@
+---
+- name: Point operator at midclt snapshot script
+  ansible.builtin.debug:
+    msg: >-
+      Pool/datasets/SMB/NFS are one-time UI/midclt work. Snapshot tasks:
+      scripts/backup/setup-truenas-snapshots.sh (see docs/rebuild-automation.md).

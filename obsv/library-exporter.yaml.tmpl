@@ -1,0 +1,21 @@
+# Library space exporter — consumed by obsv/library-exporter.
+stale_days: 180
+scrape_interval_secs: 3600
+sonarr:
+  url: http://sonarr:8989
+  public_url: https://sonarr.${SITE_LAN_DOMAIN}
+radarr:
+  url: http://radarr:7878
+  public_url: https://radarr.${SITE_LAN_DOMAIN}
+jellyfin:
+  url: http://${SITE_JELLYFIN_IP}:8096
+  watchers:
+    - all
+truenas:
+  url: https://${SITE_TRUENAS_IP}
+  tls_verify: false
+  datasets:
+    - metrion/zinthos
+    - metrion/zinthos/media
+    - metrion/zinthos/config
+    - metrion/zinthos/backups

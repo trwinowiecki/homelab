@@ -1,0 +1,13 @@
+[Unit]
+Description=Homelab restic backup
+After=network-online.target
+Wants=network-online.target
+OnFailure=homelab-backup-alert@%n.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/root/homelab-backup/restic.env
+ExecStart=/root/homelab-backup/backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6

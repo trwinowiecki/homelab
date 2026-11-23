@@ -1,0 +1,172 @@
+name: identity
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  ###########################################################################
+  ##  Caddy — LAN HTTPS + forward-auth to Authentik
+  ###########################################################################
+  caddy:
+    build:
+      context: ./caddy
+    image: homelab-caddy-cloudflare:2.10.2
+    container_name: caddy
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 128m
+    ports:
+      - "${WEBUI_PORT_CADDY_HTTP:?err}:80"
+      - "${WEBUI_PORT_CADDY_HTTPS:?err}:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /arrstack/identity/caddy-data:/data
+      - /arrstack/identity/caddy-config:/config
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - identity
+      - mediastack
+    depends_on:
+      authentik-server:
+        condition: service_started
+
+  ###########################################################################
+  ##  Authentik — identity provider (OIDC, forward-auth, LDAP outpost)
+  ###########################################################################
+  postgresql:
+    image: postgres:16-alpine@sha256:f2f98726820d0342055351c6e9d36e705f5bfffb3dd53ff556325114b08afb6d
+    container_name: authentik-postgresql
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authentik -d authentik"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - /arrstack/identity/postgresql:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=authentik
+      - POSTGRES_DB=authentik
+      - POSTGRES_PASSWORD=${AUTHENTIK_POSTGRESQL__PASSWORD:?err}
+    networks:
+      - identity
+
+  redis:
+    image: redis:alpine@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3
+    container_name: authentik-redis
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 64m
+    command: --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - /arrstack/identity/redis:/data
+    networks:
+      - identity
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2025.10.2@sha256:8322e449feefcc2416f0401038d5a1a28552c4403b079a59d3b4d978d8f3f530
+    container_name: authentik-server
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 768m
+    command: server
+    environment:
+      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY:?err}
+      - AUTHENTIK_REDIS__HOST=redis
+      - AUTHENTIK_POSTGRESQL__HOST=postgresql
+      - AUTHENTIK_POSTGRESQL__USER=authentik
+      - AUTHENTIK_POSTGRESQL__NAME=authentik
+      - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_POSTGRESQL__PASSWORD:?err}
+      - AUTHENTIK_BOOTSTRAP_PASSWORD=${AUTHENTIK_BOOTSTRAP_PASSWORD:?err}
+      - AUTHENTIK_BOOTSTRAP_EMAIL=${AUTHENTIK_BOOTSTRAP_EMAIL:?err}
+      - AUTHENTIK_ERROR_REPORTING__ENABLED=false
+      - AUTHENTIK_DISABLE_UPDATE_CHECK=true
+      - AUTHENTIK_DISABLE_STARTUP_ANALYTICS=true
+    volumes:
+      - /arrstack/identity/authentik-media:/media
+      - /arrstack/identity/authentik-templates:/templates
+      - /arrstack/identity/authentik-blueprints:/blueprints/homelab:ro
+    networks:
+      - identity
+      - mediastack
+    ports:
+      - "${LOCAL_DOCKER_IP:?err}:9000:9000"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2025.10.2@sha256:8322e449feefcc2416f0401038d5a1a28552c4403b079a59d3b4d978d8f3f530
+    container_name: authentik-worker
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 512m
+    command: worker
+    environment:
+      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY:?err}
+      - AUTHENTIK_REDIS__HOST=redis
+      - AUTHENTIK_POSTGRESQL__HOST=postgresql
+      - AUTHENTIK_POSTGRESQL__USER=authentik
+      - AUTHENTIK_POSTGRESQL__NAME=authentik
+      - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_POSTGRESQL__PASSWORD:?err}
+      - AUTHENTIK_ERROR_REPORTING__ENABLED=false
+      - AUTHENTIK_DISABLE_UPDATE_CHECK=true
+      - AUTHENTIK_DISABLE_STARTUP_ANALYTICS=true
+    # No Docker socket: the LDAP outpost is a compose service, not one the
+    # worker launches. A root worker plus the socket is root on the host.
+    user: root
+    volumes:
+      - /arrstack/identity/authentik-media:/media
+      - /arrstack/identity/authentik-templates:/templates
+      - /arrstack/identity/authentik-certs:/certs
+      - /arrstack/identity/authentik-blueprints:/blueprints/homelab:ro
+    networks:
+      - identity
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  ldap-outpost:
+    image: ghcr.io/goauthentik/ldap:2025.10.2@sha256:a5060a2f1ae7d3abf095a3947ca9ef19e225428f68729b497149f6c8699a6f36
+    container_name: authentik-ldap-outpost
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 128m
+    ports:
+      - "${LOCAL_DOCKER_IP:?err}:3389:3389"
+      - "${LOCAL_DOCKER_IP:?err}:6636:6636"
+    environment:
+      - AUTHENTIK_HOST=http://authentik-server:9000
+      - AUTHENTIK_INSECURE=true
+      - AUTHENTIK_TOKEN=${LDAP_OUTPOST_TOKEN:-}
+    networks:
+      - identity
+      - mediastack
+    depends_on:
+      - authentik-server
+
+networks:
+  identity:
+    name: identity
+    driver: bridge
+  mediastack:
+    external: true
+    name: mediastack

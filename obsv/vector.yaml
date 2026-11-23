@@ -1,0 +1,203 @@
+data_dir: /arrstack/obsv/vector-buffer
+
+sources:
+  docker_logs:
+    type: docker_logs
+    docker_host: unix:///var/run/docker.sock
+
+  docker_events:
+    type: exec
+    mode: streaming
+    command:
+      - curl
+      - -sN
+      - --unix-socket
+      - /var/run/docker.sock
+      - http://localhost/v1.43/events
+    framing:
+      method: newline_delimited
+    decoding:
+      codec: json
+
+  health_poll:
+    type: exec
+    mode: scheduled
+    scheduled:
+      exec_interval_secs: 10
+    command:
+      - python3
+      - /etc/vector/health_poll.py
+    framing:
+      method: newline_delimited
+    decoding:
+      codec: json
+
+  heartbeat:
+    type: exec
+    mode: scheduled
+    scheduled:
+      exec_interval_secs: 30
+    command:
+      - echo
+      - vector-heartbeat
+
+  deploy_markers:
+    type: file
+    include:
+      - /arrstack/obsv/deploy-markers.log
+    read_from: beginning
+
+transforms:
+  docker_logs_norm:
+    type: remap
+    inputs: [docker_logs]
+    source: |
+      .host = "ct100-arrstack"
+      .stream = string(.stream) ?? "stdout"
+      name = string(.container_name) ?? ""
+      .container = replace(name, "/", "")
+      svc, err = get(.label, ["com.docker.compose.service"])
+      .compose_service = if err == null { string(svc) ?? .container } else { .container }
+      .image = string(.image) ?? ""
+      .network_mode = if .container == "qbittorrent" {
+        "service:gluetun"
+      } else {
+        ""
+      }
+      .message = string(.message) ?? ""
+      .level = "unknown"
+      msg = string(.message) ?? ""
+      stream_name = string(.stream) ?? "stdout"
+      token = ""
+      stripped = strip_whitespace(msg)
+      if starts_with(stripped, "{") {
+        parsed, err_json = parse_json(stripped)
+        if err_json == null && is_object(parsed) {
+          if exists(parsed.level) {
+            token = string(parsed.level) ?? ""
+          } else if exists(parsed.lvl) {
+            token = string(parsed.lvl) ?? ""
+          } else if exists(parsed.severity) {
+            token = string(parsed.severity) ?? ""
+          }
+        }
+      }
+      if token == "" {
+        kv, err_kv = parse_key_value(msg)
+        if err_kv == null && is_object(kv) {
+          if exists(kv.level) {
+            token = string(kv.level) ?? ""
+          } else if exists(kv.lvl) {
+            token = string(kv.lvl) ?? ""
+          } else if exists(kv.severity) {
+            token = string(kv.severity) ?? ""
+          }
+        }
+      }
+      if token == "" {
+        cap, err_br = parse_regex(msg, r'(?i)\[(?P<lvl>error|err|fatal|warn|warning|info|debug|trace)\]')
+        if err_br == null {
+          token = string(cap.lvl) ?? ""
+        }
+      }
+      if token == "" {
+        cap2, err_go = parse_regex(msg, r'(?:^|\s)(?P<lvl>ERR|WRN|INF|DBG|FTL|TRC)(?:\s|:)')
+        if err_go == null {
+          token = string(cap2.lvl) ?? ""
+        }
+      }
+      if token == "" {
+        cap3, err_w = parse_regex(msg, r'(?i)(?:^|\s)(?P<lvl>error|fatal|warning|warn|info)(?:$|\s|:|\[)')
+        if err_w == null {
+          token = string(cap3.lvl) ?? ""
+        }
+      }
+      t = downcase(token)
+      if t == "error" || t == "err" || t == "erro" || t == "fatal" || t == "crit" || t == "critical" || t == "panic" || t == "emerg" || t == "emergency" || t == "alert" || t == "ftl" {
+        .level = "error"
+      } else if t == "warn" || t == "warning" || t == "wrn" {
+        .level = "warn"
+      } else if t == "info" || t == "information" || t == "inf" || t == "debug" || t == "dbg" || t == "trace" || t == "trc" || t == "notice" {
+        .level = "info"
+      } else if stream_name == "stderr" && match(msg, r'(?i)traceback \(most recent call last\)|unhandled exception') {
+        .level = "error"
+      }
+
+  events_norm:
+    type: remap
+    inputs: [docker_events]
+    source: |
+      .host = "ct100-arrstack"
+      .stream = "event"
+      name = string(.Actor.Attributes.name) ?? ""
+      .container = name
+      svc = string(.Actor.Attributes."com.docker.compose.service") ?? name
+      .compose_service = svc
+      .image = string(.Actor.Attributes.image) ?? string(.from) ?? ""
+      .network_mode = if .container == "qbittorrent" {
+        "service:gluetun"
+      } else {
+        ""
+      }
+      .Action = string(.Action) ?? string(.status) ?? ""
+      .exitCode = string(.Actor.Attributes.exitCode) ?? ""
+      .message = string(.status) ?? .Action
+      ts, err5 = from_unix_timestamp(.time)
+      .timestamp = if err5 == null { ts } else { now() }
+
+  health_norm:
+    type: remap
+    inputs: [health_poll]
+    source: |
+      .host = string(.host) ?? "ct100-arrstack"
+      .stream = "health"
+      .timestamp = now()
+      .message = string(.message) ?? ""
+
+  heartbeat_norm:
+    type: remap
+    inputs: [heartbeat]
+    source: |
+      .host = "ct100-arrstack"
+      .stream = "heartbeat"
+      .container = "vector"
+      .compose_service = "vector"
+      .image = ""
+      .network_mode = ""
+      .message = "vector-heartbeat"
+      .timestamp = now()
+
+  deploy_norm:
+    type: remap
+    inputs: [deploy_markers]
+    source: |
+      .host = "ct100-arrstack"
+      .stream = "deploy"
+      .container = "arrstack-deploy"
+      .compose_service = "arrstack-deploy"
+      .image = ""
+      .network_mode = ""
+      .message = string(.message) ?? ""
+      .timestamp = now()
+
+sinks:
+  victoria_logs:
+    type: http
+    inputs:
+      - docker_logs_norm
+      - events_norm
+      - health_norm
+      - heartbeat_norm
+      - deploy_norm
+    uri: http://victoria-logs:9428/insert/jsonline?_stream_fields=host,container,compose_service,image,network_mode,stream&_msg_field=message&_time_field=timestamp
+    compression: gzip
+    encoding:
+      codec: json
+    framing:
+      method: newline_delimited
+    healthcheck:
+      enabled: false
+    buffer:
+      type: disk
+      max_size: 268435488
+      when_full: drop_newest

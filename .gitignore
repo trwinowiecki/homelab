@@ -1,0 +1,32 @@
+.env
+.env.bak.*
+**/.env.bak.*
+**/credentials.env
+arrstack/configarr/secrets.yml
+**/secrets.yml
+**/arrstack.auto.env
+__pycache__/
+*.pyc
+# Rendered Authentik blueprints contain client secrets and the Discord webhook.
+identity/authentik/blueprint-pangolin.yaml
+identity/authentik/blueprint-events-discord.yaml
+
+# Age private keys and plaintext decrypt outputs
+.age/
+secrets/site.env
+*.sops.env.bak
+# SOPS plaintext siblings (encrypted *.sops.env are committed)
+.env.sops-plain
+**/.env.decrypted
+
+# Rendered from secrets/site.env — commit the .tmpl files only
+adguard/dns-rewrites.yaml
+pangolin/site/blueprint.yaml
+**/oauth.auto.env
+arrstack.oauth.env
+**/arrstack.oauth.env
+obsv/scrape.yml
+obsv/library-exporter.yaml
+arrstack/homepage/services.yaml
+arrstack/seerr/bootstrap.yml
+jellyfin/bootstrap.yml

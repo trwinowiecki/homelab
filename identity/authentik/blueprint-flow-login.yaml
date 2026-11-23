@@ -1,0 +1,259 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+# Homelab login: one-step username+password, 30-day session.
+# MFA is optional for household; required (TOTP or passkey + backup codes)
+# for admin and vpn. IP reputation deny sits in front of the public login.
+
+version: 1
+metadata:
+  name: homelab-authentication-flow
+  labels:
+    blueprints.goauthentik.io/description: Homelab login (inline password, MFA for operators)
+
+entries:
+  - model: authentik_policies_reputation.reputationpolicy
+    id: login-reputation
+    state: present
+    identifiers:
+      name: homelab-authentication-reputation
+    attrs:
+      name: homelab-authentication-reputation
+      check_ip: true
+      check_username: false
+      threshold: -5
+
+  - model: authentik_policies_expression.expressionpolicy
+    id: login-operator-needs-mfa
+    state: present
+    identifiers:
+      name: homelab-operator-needs-mfa
+    attrs:
+      name: homelab-operator-needs-mfa
+      expression: |
+        user = request.context.get("pending_user")
+        if user is None:
+            return False
+        if not user.ak_groups.filter(name__in=["admin", "vpn"]).exists():
+            return False
+        return not (
+            ak_user_has_authenticator(user, device_type="totp")
+            or ak_user_has_authenticator(user, device_type="webauthn")
+        )
+
+  - model: authentik_policies_expression.expressionpolicy
+    id: login-operator-needs-static
+    state: present
+    identifiers:
+      name: homelab-operator-needs-static
+    attrs:
+      name: homelab-operator-needs-static
+      expression: |
+        user = request.context.get("pending_user")
+        if user is None:
+            return False
+        if not user.ak_groups.filter(name__in=["admin", "vpn"]).exists():
+            return False
+        return not ak_user_has_authenticator(user, device_type="static")
+
+  - model: authentik_stages_deny.denystage
+    id: login-reputation-deny
+    state: present
+    identifiers:
+      name: homelab-authentication-reputation-deny
+    attrs:
+      name: homelab-authentication-reputation-deny
+      deny_message: Too many failed sign-in attempts from this network. Try again later.
+
+  - model: authentik_stages_password.passwordstage
+    id: homelab-authentication-password
+    state: present
+    identifiers:
+      name: homelab-authentication-password
+    attrs:
+      name: homelab-authentication-password
+      backends:
+        - authentik.core.auth.InbuiltBackend
+        - authentik.core.auth.TokenBackend
+      configure_flow: !Find [authentik_flows.flow, [slug, default-password-change]]
+
+  - model: authentik_stages_identification.identificationstage
+    id: homelab-authentication-identification
+    state: present
+    identifiers:
+      name: homelab-authentication-identification
+    attrs:
+      name: homelab-authentication-identification
+      user_fields:
+        - username
+        - email
+      password_stage: !KeyOf homelab-authentication-password
+      recovery_flow: !Find [authentik_flows.flow, [slug, homelab-recovery-flow]]
+      enable_remember_me: true
+      pretend_user_exists: true
+      case_insensitive_matching: true
+
+  - model: authentik_stages_authenticator_validate.authenticatorvalidatestage
+    id: login-mfa-required
+    state: present
+    identifiers:
+      name: homelab-authentication-mfa-required
+    attrs:
+      name: homelab-authentication-mfa-required
+      device_classes:
+        - totp
+        - webauthn
+      not_configured_action: configure
+      configuration_stages:
+        - !Find [authentik_stages_authenticator_totp.authenticatortotpstage, [name, default-authenticator-totp-setup]]
+        - !Find [authentik_stages_authenticator_webauthn.authenticatorwebauthnstage, [name, default-authenticator-webauthn-setup]]
+
+  - model: authentik_stages_authenticator_validate.authenticatorvalidatestage
+    id: login-static-required
+    state: present
+    identifiers:
+      name: homelab-authentication-static-required
+    attrs:
+      name: homelab-authentication-static-required
+      device_classes:
+        - static
+      not_configured_action: configure
+      configuration_stages:
+        - !Find [authentik_stages_authenticator_static.authenticatorstaticstage, [name, default-authenticator-static-setup]]
+
+  - model: authentik_stages_user_login.userloginstage
+    id: homelab-authentication-login
+    state: present
+    identifiers:
+      name: homelab-authentication-login
+    attrs:
+      name: homelab-authentication-login
+      session_duration: days=30
+      remember_me_offset: days=30
+
+  - model: authentik_flows.flow
+    id: homelab-authentication-flow
+    state: present
+    identifiers:
+      slug: homelab-authentication-flow
+    attrs:
+      name: Homelab authentication
+      slug: homelab-authentication-flow
+      title: Sign in
+      designation: authentication
+      authentication: none
+
+  - model: authentik_flows.flowstagebinding
+    id: login-bind-reputation
+    state: present
+    identifiers:
+      target: !KeyOf homelab-authentication-flow
+      stage: !KeyOf login-reputation-deny
+      order: 5
+    attrs:
+      target: !KeyOf homelab-authentication-flow
+      stage: !KeyOf login-reputation-deny
+      order: 5
+      evaluate_on_plan: false
+      re_evaluate_policies: true
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf login-bind-reputation
+      order: 0
+    attrs:
+      target: !KeyOf login-bind-reputation
+      policy: !KeyOf login-reputation
+      enabled: true
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf homelab-authentication-flow
+      stage: !KeyOf homelab-authentication-identification
+      order: 10
+    attrs:
+      target: !KeyOf homelab-authentication-flow
+      stage: !KeyOf homelab-authentication-identification
+      order: 10
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf homelab-authentication-flow
+      stage: !Find [authentik_stages_authenticator_validate.authenticatorvalidatestage, [name, default-authentication-mfa-validation]]
+      order: 30
+    attrs:
+      target: !KeyOf homelab-authentication-flow
+      stage: !Find [authentik_stages_authenticator_validate.authenticatorvalidatestage, [name, default-authentication-mfa-validation]]
+      order: 30
+
+  - model: authentik_flows.flowstagebinding
+    id: login-bind-mfa-required
+    state: present
+    identifiers:
+      target: !KeyOf homelab-authentication-flow
+      stage: !KeyOf login-mfa-required
+      order: 40
+    attrs:
+      target: !KeyOf homelab-authentication-flow
+      stage: !KeyOf login-mfa-required
+      order: 40
+      evaluate_on_plan: false
+      re_evaluate_policies: true
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf login-bind-mfa-required
+      order: 0
+    attrs:
+      target: !KeyOf login-bind-mfa-required
+      policy: !KeyOf login-operator-needs-mfa
+      enabled: true
+
+  - model: authentik_flows.flowstagebinding
+    id: login-bind-static-required
+    state: present
+    identifiers:
+      target: !KeyOf homelab-authentication-flow
+      stage: !KeyOf login-static-required
+      order: 50
+    attrs:
+      target: !KeyOf homelab-authentication-flow
+      stage: !KeyOf login-static-required
+      order: 50
+      evaluate_on_plan: false
+      re_evaluate_policies: true
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf login-bind-static-required
+      order: 0
+    attrs:
+      target: !KeyOf login-bind-static-required
+      policy: !KeyOf login-operator-needs-static
+      enabled: true
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf homelab-authentication-flow
+      stage: !KeyOf homelab-authentication-login
+      order: 100
+    attrs:
+      target: !KeyOf homelab-authentication-flow
+      stage: !KeyOf homelab-authentication-login
+      order: 100
+
+  - model: authentik_brands.brand
+    state: present
+    identifiers:
+      domain: authentik-default
+    attrs:
+      domain: authentik-default
+      default: true
+      flow_authentication: !KeyOf homelab-authentication-flow
+      flow_invalidation: !Find [authentik_flows.flow, [slug, default-invalidation-flow]]
+      flow_user_settings: !Find [authentik_flows.flow, [slug, default-user-settings-flow]]
+      flow_recovery: !Find [authentik_flows.flow, [slug, homelab-recovery-flow]]

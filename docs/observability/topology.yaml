@@ -1,0 +1,21 @@
+host: ct100-arrstack
+dns: adguard   # <adguard-host> — fleet-wide, not collected
+scrape:
+  node_exporter: <pve-host>:9100
+  pve_api: <pve-host>:8006
+  linode_api: api.linode.com  # account/transfer; token in obsv/.env
+  victoria_metrics: 127.0.0.1:8428   # CT 100 loopback; not published on the LAN
+  grafana: https://grafana.<lan-domain>
+edges:
+  - from: gluetun
+    to: [qbittorrent]
+    kind: network_namespace
+    note: >
+      network_mode service:gluetun. Recreating gluetun strands qbittorrent.
+      docker restart does not repair; docker compose up -d does.
+  - from: [sonarr, radarr, lidarr]
+    to: [qbittorrent, sabnzbd]
+    kind: download_client
+  - from: [sonarr, radarr, lidarr]
+    to: prowlarr
+    kind: indexer

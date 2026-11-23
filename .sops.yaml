@@ -1,0 +1,13 @@
+# Encrypt secrets for the workstation and the deploy agent (CT 105).
+# Private keys live in .age/ (gitignored) and on the deploy host.
+creation_rules:
+  - path_regex: '.*\.sops\.env$'
+    encrypted_regex: '^(.*)$'
+    age: >-
+      age1nlqkmp4prajcd4x3vgzp00fhnayl6mzykfv00dulnj5n2dfa3usqyzmymq,
+      age1wswzx03udr6eqszqsjj94xy07t7cwfeflxyayhqllpdlqvtecpnq06fe0q
+  - path_regex: '.*\.sops\.ya?ml$'
+    encrypted_regex: '^(data|stringData|.*)$'
+    age: >-
+      age1nlqkmp4prajcd4x3vgzp00fhnayl6mzykfv00dulnj5n2dfa3usqyzmymq,
+      age1wswzx03udr6eqszqsjj94xy07t7cwfeflxyayhqllpdlqvtecpnq06fe0q

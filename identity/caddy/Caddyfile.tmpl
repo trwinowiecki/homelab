@@ -1,0 +1,167 @@
+# Rendered by scripts/render_identity_caddy.sh — do not edit Caddyfile by hand.
+
+{
+	{$CADDY_GLOBAL_OPTIONS}
+}
+
+# Caddy 2.10 reuses this wildcard cert for named *.{$IDENTITY_LAN_DOMAIN} site blocks.
+*.{$IDENTITY_LAN_DOMAIN} {
+	abort
+}
+
+(auth_admin) {
+	forward_auth authentik-server:9000 {
+		uri /outpost.goauthentik.io/auth/caddy
+		copy_headers X-Authentik-Username X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Authentik-Meta-*
+	}
+}
+
+# Authentik UI (LAN)
+auth.{$IDENTITY_LAN_DOMAIN} {
+	{$TLS_DIRECTIVE}
+	reverse_proxy authentik-server:9000
+}
+
+# Authentik via Pangolin tunnel (public <domain> — Pangolin terminates edge TLS)
+auth.{$IDENTITY_PUBLIC_DOMAIN} {
+	tls internal
+	reverse_proxy authentik-server:9000
+}
+
+# --- Admin UIs (forward-auth) ---
+
+sonarr.{$IDENTITY_LAN_DOMAIN} {
+	import auth_admin
+	{$TLS_DIRECTIVE}
+	reverse_proxy sonarr:8989
+}
+
+radarr.{$IDENTITY_LAN_DOMAIN} {
+	import auth_admin
+	{$TLS_DIRECTIVE}
+	reverse_proxy radarr:7878
+}
+
+lidarr.{$IDENTITY_LAN_DOMAIN} {
+	import auth_admin
+	{$TLS_DIRECTIVE}
+	reverse_proxy lidarr:8686
+}
+
+prowlarr.{$IDENTITY_LAN_DOMAIN} {
+	import auth_admin
+	{$TLS_DIRECTIVE}
+	reverse_proxy prowlarr:9696
+}
+
+bazarr.{$IDENTITY_LAN_DOMAIN} {
+	import auth_admin
+	{$TLS_DIRECTIVE}
+	reverse_proxy bazarr:6767
+}
+
+sabnzbd.{$IDENTITY_LAN_DOMAIN} {
+	import auth_admin
+	{$TLS_DIRECTIVE}
+	reverse_proxy sabnzbd:8080
+}
+
+# qBit uses network_mode: service:gluetun (no Docker DNS name of its own).
+# Host publish is 127.0.0.1:WEBUI_PORT only, so host.docker.internal cannot reach it.
+qbittorrent.{$IDENTITY_LAN_DOMAIN} {
+	import auth_admin
+	{$TLS_DIRECTIVE}
+	reverse_proxy gluetun:{$WEBUI_PORT_QBITTORRENT}
+}
+
+bindery.{$IDENTITY_LAN_DOMAIN} {
+	import auth_admin
+	{$TLS_DIRECTIVE}
+	reverse_proxy bindery:8787
+}
+
+mixarr.{$IDENTITY_LAN_DOMAIN} {
+	import auth_admin
+	{$TLS_DIRECTIVE}
+	reverse_proxy mixarr:3010
+}
+
+homepage.{$IDENTITY_LAN_DOMAIN} {
+	import auth_admin
+	{$TLS_DIRECTIVE}
+	reverse_proxy homepage:3000
+}
+
+portainer.{$IDENTITY_LAN_DOMAIN} {
+	@oauth_callback query code=*
+	handle @oauth_callback {
+		reverse_proxy portainer:9000 {
+			header_up Host {host}
+			header_up X-Forwarded-Proto https
+		}
+	}
+	@oauth_api path /api/auth/oauth/* /api/v2/auth/oauth/*
+	handle @oauth_api {
+		reverse_proxy portainer:9000 {
+			header_up Host {host}
+			header_up X-Forwarded-Proto https
+		}
+	}
+	handle {
+		import auth_admin
+		reverse_proxy portainer:9000 {
+			header_up Host {host}
+			header_up X-Forwarded-Proto https
+		}
+	}
+	{$TLS_DIRECTIVE}
+}
+
+# Dozzle and Grafana join the mediastack network (see obsv/docker-compose.yaml).
+# Their host publishes are 127.0.0.1 only, which host.docker.internal cannot reach.
+dozzle.{$IDENTITY_LAN_DOMAIN} {
+	import auth_admin
+	{$TLS_DIRECTIVE}
+	reverse_proxy dozzle:8080
+}
+
+grafana.{$IDENTITY_LAN_DOMAIN} {
+	{$TLS_DIRECTIVE}
+	reverse_proxy grafana:3000
+}
+
+# Seerr — Jellyfin login inside the app; TLS only
+seerr.{$IDENTITY_LAN_DOMAIN} {
+	{$TLS_DIRECTIVE}
+	reverse_proxy seerr:5055
+}
+
+# Jellyfin — native app login (LDAP); TLS only, no forward-auth
+# LAN only: jellyfin.<lan-domain> (not jellyfin.<domain> — that is Pangolin/public)
+# Backend is CT 104 (Docker Jellyfin), not Docker DNS on CT 100.
+jellyfin.{$IDENTITY_LAN_DOMAIN} {
+	{$TLS_DIRECTIVE}
+	reverse_proxy <jellyfin-host>:8096 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+	}
+}
+
+# --- Household OIDC apps (TLS termination; app handles login) ---
+
+mealie.{$IDENTITY_LAN_DOMAIN} {
+	{$TLS_DIRECTIVE}
+	reverse_proxy mealie:9000
+}
+
+audiobookshelf.{$IDENTITY_LAN_DOMAIN} {
+	{$TLS_DIRECTIVE}
+	reverse_proxy audiobookshelf:80
+}
+
+# mealie-og-sync publishes 127.0.0.1 only; reach it on the Docker network.
+sync.{$IDENTITY_LAN_DOMAIN} {
+	import auth_admin
+	{$TLS_DIRECTIVE}
+	reverse_proxy mealie-og-sync:9926
+}

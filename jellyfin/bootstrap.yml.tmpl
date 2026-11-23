@@ -1,0 +1,40 @@
+# Declarative Jellyfin bootstrap — applied by scripts/bootstrap/jellyfin.py
+# Plugin repos + installs + LDAP (Authentik). No secrets in this file.
+#
+# Media Bar and Ratings have no Jellyfin 12.0 builds yet — omit until authors ship.
+
+repositories:
+  - name: Jellyfin Stable
+    url: https://repo.jellyfin.org/files/plugin/manifest.json
+  - name: Intro Skipper
+    url: https://intro-skipper.org/manifest.json
+  - name: IAmParadox
+    url: https://www.iamparadox.dev/jellyfin/plugins/manifest.json
+
+plugins:
+  - name: Fanart
+    guid: 170a157f-ac6c-437a-abdd-ca9c25cebd39
+  - name: File Transformation
+    guid: 5e87cc92-571a-4d8d-8d98-d2d4147f9f90
+  - name: Intro Skipper
+    guid: c83d86bb-a1e0-4c35-a113-e2101cf4ee6b
+  - name: LDAP-Auth
+    guid: 958aad66-3784-4d2a-b89a-a7b6fab6e25c
+
+ldap:
+  # Authentik LDAP outpost is published on CT 100; CT 104 cannot use Docker DNS.
+  server: ${SITE_ARRSTACK_IP}
+  port: 3389
+  use_ssl: false
+  bind_user: cn=ldap_service_account,ou=users,dc=ldap,dc=goauthentik,dc=io
+  base_dn: dc=ldap,dc=goauthentik,dc=io
+  search_filter: (memberOf=cn=jellyfin_users,ou=groups,dc=ldap,dc=goauthentik,dc=io)
+  search_attributes: uid, cn, mail, displayName
+  uid_attribute: uid
+  username_attribute: cn
+  create_users_from_ldap: true
+  enable_all_folders: true
+  # Existing local users with the same name stay on Default auth until listed here.
+  provider_users:
+    - taylor
+  local_admin: admin

@@ -1,0 +1,10 @@
+# SSH allowed signers for git verify-commit on the deploy agent.
+# Replace placeholders with your workstation SSH signing key and GitHub web-flow.
+# Format: principals namespaces=git ssh-key
+#
+# example:
+# trwinowiecki namespaces="git" ssh-ed25519 AAAA... comment
+#
+# GitHub's web-flow key (squash merges via UI) — fetch current from:
+# https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification
+# and append here after publish.

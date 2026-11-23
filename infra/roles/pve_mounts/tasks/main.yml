@@ -1,0 +1,30 @@
+---
+# CIFS/NFS mounts on pve. Credentials come from a root-only file, never inline.
+- name: Ensure mount credential file exists (create empty template if missing)
+  ansible.builtin.copy:
+    dest: /etc/pve/priv/metrion-cifs.creds
+    mode: "0600"
+    content: |
+      username=zinthos
+      password=CHANGE_ME
+    force: false
+
+- name: Ensure mount points exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /mnt/lxc_shares/metrion/media
+    - /mnt/lxc_shares/metrion/config
+    - /mnt/lxc_shares/metrion/backups
+
+- name: Ensure fstab entries for TrueNAS shares
+  ansible.builtin.blockinfile:
+    path: /etc/fstab
+    marker: "# {mark} ANSIBLE homelab metrion mounts"
+    block: |
+      //{{ truenas_host | default('192.168.1.202') }}/media /mnt/lxc_shares/metrion/media cifs credentials=/etc/pve/priv/metrion-cifs.creds,uid=100000,gid=110000,cache=none,_netdev,x-systemd.automount 0 0
+      //{{ truenas_host | default('192.168.1.202') }}/config /mnt/lxc_shares/metrion/config cifs credentials=/etc/pve/priv/metrion-cifs.creds,uid=100000,gid=110000,cache=none,_netdev,x-systemd.automount 0 0
+      {{ truenas_host | default('192.168.1.202') }}:/mnt/metrion/zinthos/backups /mnt/lxc_shares/metrion/backups nfs defaults,_netdev,x-systemd.automount 0 0
+  notify: reload mounts

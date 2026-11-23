@@ -1,0 +1,28 @@
+---
+- name: Report expected LXC guest inventory
+  ansible.builtin.debug:
+    msg: "CT {{ item.id }} {{ item.hostname }} — {{ item.cores }}c/{{ item.memory }}MB/{{ item.rootfs_gb }}GB features={{ item.features }} ({{ item.notes }})"
+  loop: "{{ lxc_guests }}"
+  loop_control:
+    label: "{{ item.id }}:{{ item.hostname }}"
+
+- name: Check which guests already exist
+  ansible.builtin.command: pct status {{ item.id }}
+  register: pct_status
+  changed_when: false
+  failed_when: false
+  loop: "{{ lxc_guests }}"
+  loop_control:
+    label: "{{ item.id }}"
+
+- name: Fail with create recipe when a guest is missing
+  ansible.builtin.fail:
+    msg: >-
+      CT {{ item.item.id }} ({{ item.item.hostname }}) is missing. Create with pct create
+      (see docs/rebuild-automation.md). This role does not auto-create disks/binds
+      because media bind-mounts and GPU passthrough are host-specific.
+  when: item.rc != 0
+  loop: "{{ pct_status.results }}"
+  loop_control:
+    label: "{{ item.item.id }}"
+  ignore_errors: true

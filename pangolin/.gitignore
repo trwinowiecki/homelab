@@ -1,0 +1,5 @@
+# Secrets and build output. See AGENTS.md — .env files in this repo hold live
+# credentials and must never be staged.
+.env
+site/.env
+.rendered/

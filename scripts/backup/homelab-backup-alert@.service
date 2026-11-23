@@ -1,0 +1,7 @@
+[Unit]
+Description=Homelab backup failure alert for %i
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/homelab-backup/backup-alert.sh %i
