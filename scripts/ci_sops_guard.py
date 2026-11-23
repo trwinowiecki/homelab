@@ -36,9 +36,14 @@ def main() -> int:
             print(f"  {p}", file=sys.stderr)
         return 1
 
-    sops_files = sorted(p for p in files if ".sops." in p)
+    # Encrypted payloads only — not the root .sops.yaml creation-rules file.
+    sops_files = sorted(
+        p
+        for p in files
+        if p.endswith((".sops.env", ".sops.yml", ".sops.yaml")) and not p.endswith("/.sops.yaml") and p != ".sops.yaml"
+    )
     if not sops_files:
-        print("WARN: no *.sops.* files tracked yet")
+        print("WARN: no encrypted *.sops.env / *.sops.yml files tracked yet")
     for rel in sops_files:
         text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
         if "sops:" not in text and "sops_mac" not in text and "ENC[" not in text:

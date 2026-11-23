@@ -27,7 +27,10 @@ from minyaml import load as minyaml_load, loads as minyaml_loads  # noqa: E402
 
 class JellyfinBootstrapTests(unittest.TestCase):
     def test_bootstrap_yaml_loads(self) -> None:
-        spec = minyaml_loads((ROOT / "jellyfin" / "bootstrap.yml").read_text())
+        bootstrap = ROOT / "jellyfin" / "bootstrap.yml"
+        if not bootstrap.is_file():
+            bootstrap = ROOT / "jellyfin" / "bootstrap.yml.tmpl"
+        spec = minyaml_loads(bootstrap.read_text())
         self.assertIn("repositories", spec)
         self.assertIn("plugins", spec)
         self.assertIn("ldap", spec)
@@ -66,7 +69,10 @@ class JellyfinBootstrapTests(unittest.TestCase):
             (config / "data" / "plugins" / "configurations").mkdir(parents=True)
             env = {"JELLYFIN_CONFIG_DIR": str(config), "LDAP_JELLYFIN_BIND_TOKEN": "test-token"}
             identity_env = {}
-            spec = minyaml_loads((ROOT / "jellyfin" / "bootstrap.yml").read_text())
+            bootstrap = ROOT / "jellyfin" / "bootstrap.yml"
+            if not bootstrap.is_file():
+                bootstrap = ROOT / "jellyfin" / "bootstrap.yml.tmpl"
+            spec = minyaml_loads(bootstrap.read_text())
             render_ldap_config(env, identity_env, spec)
             out = config / "data" / "plugins" / "configurations" / LDAP_CONFIG_NAME
             self.assertTrue(out.is_file())

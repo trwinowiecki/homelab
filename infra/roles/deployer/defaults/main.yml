@@ -6,7 +6,7 @@ deployer_memory_mb: 512
 deployer_disk_gb: 8
 deployer_timezone: America/New_York
 deployer_repo_dir: /opt/homelab
-deployer_repo_url: ""  # set in host_vars once the public GitHub URL exists
+deployer_repo_url: "git@github.com:trwinowiecki/homelab.git"
 deployer_branch: main
 deployer_age_key_src: "{{ playbook_dir }}/../.age/deployer.key"
 deployer_allowed_signers_src: "{{ playbook_dir }}/../infra/roles/deployer/files/allowed_signers"
