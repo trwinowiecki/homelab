@@ -47,29 +47,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y docker-compose-v2
-          fill_env() {
-            python3 - "$1" <<'PY'
-          import sys
-          from pathlib import Path
-          path = Path(sys.argv[1])
-          out = []
-          for line in path.read_text().splitlines():
-              raw = line.strip()
-              if raw and not raw.startswith("#") and "=" in line:
-                  key, _, val = line.partition("=")
-                  if (not val.strip()) or ("CHANGE_ME" in val):
-                      line = f"{key.strip()}=ci-placeholder"
-              out.append(line)
-          path.write_text("\n".join(out) + "\n")
-          PY
-          }
-          cp .env.example .env && fill_env .env
+          cp .env.example .env
+          python3 scripts/ci_fill_env_placeholders.py .env
           docker compose -f docker-compose.yaml --env-file .env config >/dev/null
           rm -f .env
-          cp jellyfin/.env.example jellyfin/.env && fill_env jellyfin/.env
+          cp jellyfin/.env.example jellyfin/.env
+          python3 scripts/ci_fill_env_placeholders.py jellyfin/.env
           docker compose -f jellyfin/docker-compose.yaml --env-file jellyfin/.env config >/dev/null
           rm -f jellyfin/.env
-          cp obsv/.env.example obsv/.env && fill_env obsv/.env
+          cp obsv/.env.example obsv/.env
+          python3 scripts/ci_fill_env_placeholders.py obsv/.env
           docker compose -f obsv/docker-compose.yaml --env-file obsv/.env config >/dev/null
           rm -f obsv/.env
 
